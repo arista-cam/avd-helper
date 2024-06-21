@@ -49,7 +49,7 @@ I have utilised three external python modules in this script:
 
 # avd-helper Usage
 ContainerLab requires elevated privileges so you will need to run the script with sudo.
-`sudo Python3 avd-helper.py` should get you started.
+`sudo Python3 avd_helper.py` should get you started.
 
 On first run, the script will prompt for your CVP credentials. It will store these credentials in a .cvpcreds file and it will then use this file for CVP info for every subsequent run.<br />
 If you need to change your CVP details, simple use the 'Change CVP Credentials' menu option.<br />
