@@ -7,7 +7,7 @@ The code you will find in this repository is most likely offensive to developers
 # Exec Summary
 This 'code' is designed to use AVD to deploy a Spine/Leaf topology via CVP using ContainerLab devices.
 Features include:
-- Automatically deployment containerlab toplogy
+- Automatically deploy containerlab toplogy
 - Automatic provisioning into CloudVision (CVP)
 - Automatic creation of management configlets
 - Automatically runs both Build and Deploy playbooks
