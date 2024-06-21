@@ -29,8 +29,8 @@ In order for arista-avd-clab to work, it requires the following:
 **ContainerLab** installation guides can be found [here](https://containerlab.dev/install/)<br />
 **Python** installation guides can be found [here](https://wiki.python.org/moin/BeginnersGuide/Download)<br />
 **Python-pip** installation guide can be found [here](https://pip.pypa.io/en/stable/installation/) (I recommend using the `get-pip.py` script to install pip)<br />
-**cEOS images** can be downloaded from the [Arista website.](https://www.arista.com/en/support/software-download)
-**Ansible** installation guides can be found [here](https://docs.ansible.com/ansible/latest/installation_guide/intro_installation.html)
+**cEOS images** can be downloaded from the [Arista website.](https://www.arista.com/en/support/software-download)<br />
+**Ansible** installation guides can be found [here](https://docs.ansible.com/ansible/latest/installation_guide/intro_installation.html)<br />
 **AVD** installation guides can be found [here](https://avd.sh/en/stable/docs/installation/collection-installation.html)
 
 # cEOS Install Instructions
@@ -51,10 +51,10 @@ I have utilised three external python modules in this script:
 ContainerLab requires elevated privileges so you will need to run the script with sudo.
 `sudo Python3 avd-helper.py` should get you started.
 
-On first run, the script will prompt for your CVP credentials. It will store these credentials in a .cvpcreds file and it will then use this file for CVP info for every subsequent run.
-If you need to change your CVP details, simple use the 'Change CVP Credentials' menu option.
-The 'Deploy Lab' menu option will deploy the lab, register the devices with CVP, provision the devices in CVP, and run the Ansible Build and Deploy playbooks.
-The 'Cleanup Lab' menu option will destroy the lab, decommission the devices from CVP, and remove all configlets and containers from CVP. 
+On first run, the script will prompt for your CVP credentials. It will store these credentials in a .cvpcreds file and it will then use this file for CVP info for every subsequent run.<br />
+If you need to change your CVP details, simple use the 'Change CVP Credentials' menu option.<br />
+The 'Deploy Lab' menu option will deploy the lab, register the devices with CVP, provision the devices in CVP, and run the Ansible Build and Deploy playbooks.<br />
+The 'Cleanup Lab' menu option will destroy the lab, decommission the devices from CVP, and remove all configlets and containers from CVP. <br />
 The 'Show Ansible Build Log' and 'Show Ansible Deploy Log' menu options will show the output from the 'ansible-playbook' as it doesnt print to the console during deployment.
 
 
