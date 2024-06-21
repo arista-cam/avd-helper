@@ -64,6 +64,9 @@ The following topologies are included:
 ### Single Data Center with MLAG
 ![SDC-MLAG](https://user-images.githubusercontent.com/680877/222593712-17c56723-d3e8-4902-a2a1-673cda7629b0.png)
 
+# AVD Generated Documentation
+AVD will generate Fabric and Device documentation that can be found in the ./sites/dc1 folder after the script has finished running.
+
 
 # CloudVision Setup
 In order to use CVP with ContainerLab, the CVP host needs a static route configured back to the management range you have configured.
