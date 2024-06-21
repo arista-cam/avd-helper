@@ -39,7 +39,7 @@ This command imports the container image that you downloaded and saves it into t
 You need to follow the correct image naming standard of ceos:#.##.##(.#)
 
 # avd-clab Install Instructions
-Once everything has been installed, clone the repository using `git clone https://github.com/CameronPrior/arista-avd-clab.git` into a directory of your choosing.
+Once everything has been installed, clone the repository using `git clone https://github.com/CameronPrior/avd-clab.git` into a directory of your choosing.
 After the repo has been cloned, navigate into the directory and run `sudo pip install -r requirements.txt` to install the python modules required. 
 
 ## Python Modules Used
