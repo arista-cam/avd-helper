@@ -8,6 +8,7 @@ import requests
 import subprocess
 import threading
 import uuid
+import datetime
 from cvprac.cvp_client import CvpClient, CvpLoginError
 from getpass import getpass
 from pathlib import Path
@@ -266,6 +267,16 @@ def deploy_clab(info, cvp_ip, cvp_username, cvp_password):
         animation_thread.join()
     logging.info("Done")
     
+    # Generate Topology Tags
+    stop_animation = threading.Event()
+    animation_thread = animated_message(stop_animation, "Generating Topology Tags")
+    try:
+        generate_topology_tags(cvp_client)
+    finally:
+        stop_animation.set()
+        animation_thread.join()
+    logging.info("Done")
+    
     print("")
     print("")
     print("----------------------------------------")
@@ -319,9 +330,12 @@ def execute_pending_tasks(cvp_client):
 def run_ansible_build():
     playbook = script_dir / "playbooks/build_dc1.yml"
     inventory = script_dir / "sites/dc1/inventory.yml"
-    log_file_path = script_dir / "logs/ansible_build_output.log"
+    log_folder = script_dir / 'logs'
+    log_file_path = log_folder / "ansible_build_output.log"
     
-
+    if not os.path.exists(log_folder):
+        os.makedirs(log_folder)
+    
     with open(log_file_path, 'w') as log_file:
         try:
             subprocess.run(
@@ -337,7 +351,8 @@ def run_ansible_build():
 def run_ansible_deploy():
     playbook = script_dir / "playbooks/deploy_dc1_cvp.yml"
     inventory = script_dir / "sites/dc1/inventory.yml"
-    log_file_path = script_dir / "logs/ansible_deploy_output.log"
+    log_folder = script_dir / 'logs'
+    log_file_path = log_folder / "ansible_deploy_output.log"
     
 
     with open(log_file_path, 'w') as log_file:
@@ -351,6 +366,125 @@ def run_ansible_deploy():
             )
         except subprocess.CalledProcessError as e:
             logging.error(f"An error occurred: {e}")
+            
+def generate_topology_tags(cvp_client):
+    # Constants
+    dc_tag_label = 'topology_hint_datacenter'
+    fabric_tag_label = 'topology_hint_fabric'
+    pod_tag_label = 'topology_hint_pod'
+    rack_tag_label = 'topology_hint_rack'
+    type_tag_label = 'topology_hint_type'
+    dc_tag_value = 'DC1'
+    fabric_tag_value = 'dc1_fabric'
+    pod_tag_value = 'Pod1'
+    leaf_tag_value = 'leaf'
+    spine_tag_value = 'spine'
+    pair1_tag_value = 'LeafPair1'
+    pair2_tag_value = 'LeafPair2'
+    element_type = 'ELEMENT_TYPE_DEVICE'
+
+    # Generate a unique workspace name
+    current_time = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
+    workspace_id = f'avd-clab-tags-{current_time}'
+    display_name = 'AVD Clab Tags'
+    description = 'Workspace for tagging devices'
+
+    # Create workspace
+    cvp_client.api.workspace_config(
+        workspace_id=workspace_id,
+        display_name=display_name,
+        description=description,
+        request='REQUEST_UNSPECIFIED',
+        request_id='1'
+    )
+
+    # Configure common tags
+    common_tags = [
+        (dc_tag_label, dc_tag_value),
+        (fabric_tag_label, fabric_tag_value),
+        (pod_tag_label, pod_tag_value)
+    ]
+
+    for tag_label, tag_value in common_tags:
+        cvp_client.api.tag_config(
+            element_type=element_type,
+            workspace_id=workspace_id,
+            tag_label=tag_label,
+            tag_value=tag_value
+        )
+
+    # Get devices
+    leaf_devices = cvp_client.api.get_devices_in_container('dc1_leafs')
+    spine_devices = cvp_client.api.get_devices_in_container('dc1_spines')
+    devices = leaf_devices + spine_devices
+
+    # Retrieve device serial numbers
+    device_details = {
+        's1-leaf1': None,
+        's1-leaf2': None,
+        's1-leaf3': None,
+        's1-leaf4': None,
+        's1-spine1': None,
+        's1-spine2': None
+    }
+
+    for device in devices:
+        fqdn = device['fqdn']
+        if fqdn in device_details:
+            device_details[fqdn] = device['serialNumber']
+
+    # Assign tags to devices
+    for device in devices:
+        device_id = device['serialNumber']
+        for tag_label, tag_value in common_tags:
+            cvp_client.api.tag_assignment_config(
+                element_type=element_type,
+                workspace_id=workspace_id,
+                tag_label=tag_label,
+                tag_value=tag_value,
+                device_id=device_id,
+                interface_id=''
+            )
+        
+        fqdn = device['fqdn']
+        if fqdn in device_details:
+            specific_tags = {
+                's1-leaf1': [(type_tag_label, leaf_tag_value), (rack_tag_label, pair1_tag_value)],
+                's1-leaf2': [(type_tag_label, leaf_tag_value), (rack_tag_label, pair1_tag_value)],
+                's1-leaf3': [(type_tag_label, leaf_tag_value), (rack_tag_label, pair2_tag_value)],
+                's1-leaf4': [(type_tag_label, leaf_tag_value), (rack_tag_label, pair2_tag_value)],
+                's1-spine1': [(type_tag_label, spine_tag_value)],
+                's1-spine2': [(type_tag_label, spine_tag_value)]
+            }
+            for tag_label, tag_value in specific_tags[fqdn]:
+                cvp_client.api.tag_assignment_config(
+                    element_type=element_type,
+                    workspace_id=workspace_id,
+                    tag_label=tag_label,
+                    tag_value=tag_value,
+                    device_id=device_id,
+                    interface_id=''
+                )
+
+    # Build the workspace
+    cvp_client.api.workspace_config(
+        workspace_id=workspace_id,
+        display_name=display_name,
+        description=description,
+        request='REQUEST_START_BUILD',
+        request_id='2'
+    )
+
+    time.sleep(5)  # Wait for build to complete
+
+    # Submit the workspace
+    cvp_client.api.workspace_config(
+        workspace_id=workspace_id,
+        display_name=display_name,
+        description=description,
+        request='REQUEST_SUBMIT',
+        request_id='3'
+    )
 
 def decommission_devices(cvp_client):
     child_containers = ['dc1_spines', 'dc1_leafs']
@@ -405,7 +539,18 @@ def delete_configlets(cvp_client, prefixes):
                     logging.error(f"Failed to delete configlet '{configlet['name']}': {e}")
     except Exception as e:
         logging.error(f"Failed to retrieve configlets: {e}")
-
+        
+def delete_folders():
+    folders_to_delete = ['logs','sites/dc1/documentation','sites/dc1/intended']
+    for folder_path in folders_to_delete:
+        if os.path.exists(folder_path):
+            for root, dirs, files in os.walk(folder_path, topdown=False):
+                for name in files:
+                    os.remove(os.path.join(root, name))
+                for name in dirs:
+                    os.rmdir(os.path.join(root, name))
+            os.rmdir(folder_path)
+    
 
 def cleanup_clab(info, cvp_ip, cvp_username, cvp_password):
     clear_console()
@@ -467,6 +612,16 @@ def cleanup_clab(info, cvp_ip, cvp_username, cvp_password):
     animation_thread = animated_message(stop_animation, "Destroying Container Lab")
     try:
         subprocess_run(info.destroy_command)
+    finally:
+        stop_animation.set()
+        animation_thread.join()
+    logging.info("Done")
+    
+    # Deleting Unused Folders
+    stop_animation = threading.Event()
+    animation_thread = animated_message(stop_animation, "Cleaning Up Folders")
+    try:
+        delete_folders()
     finally:
         stop_animation.set()
         animation_thread.join()
