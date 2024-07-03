@@ -34,16 +34,16 @@ In order for arista-avd-clab to work, it requires the following:
 **AVD** installation guides can be found [here](https://avd.sh/en/stable/docs/installation/collection-installation.html)
 
 # cEOS Install Instructions
-Once a supported cEOS images has been downloaded use the `docker import {CEOS FILENAME} {IMAGE NAME}` command, e.g. `docker import cEOS-lab-4.29.0F.tar ceos:4.29.0F`.
+Once a supported cEOS images has been downloaded use the `docker import {CEOS FILENAME} {IMAGE NAME}` command, e.g. `docker import cEOS-lab-4.32.0F.tar ceosimage:4.32.0F`.
 This command imports the container image that you downloaded and saves it into the docker image repository using the *image_name* you have given it.
-You need to follow the correct image naming standard of ceos:#.##.##(.#)
+You need to follow the correct image naming standard of ceosimage:#.##.##(.#)
 
 # avd-clab Install Instructions
 Once everything has been installed, clone the repository using `git clone https://github.com/CameronPrior/avd-clab.git` into a directory of your choosing.
 After the repo has been cloned, navigate into the directory and run `sudo pip install -r requirements.txt` to install the python modules required. 
 
 ## Python Modules Used
-I have utilised three external python modules in this script:
+I have utilised two external python modules in this script:
 - [cvPrac](https://github.com/aristanetworks/cvprac) - Which is a RESTful API client for Cloudvision® Portal (CVP) which can be used for building applications that work with Arista CVP
 - [requests](https://pypi.org/project/requests/) - The python HTTP library
 
