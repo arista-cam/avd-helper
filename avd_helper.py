@@ -9,7 +9,7 @@ import subprocess
 import threading
 import uuid
 import datetime
-from cvprac.cvp_client import CvpClient, CvpLoginError
+from cvprac.cvp_client import CvpClient
 from getpass import getpass
 from pathlib import Path
 
