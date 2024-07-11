@@ -9,6 +9,8 @@ import subprocess
 import threading
 import uuid
 import datetime
+import docker
+import re
 from cvprac.cvp_client import CvpClient
 from getpass import getpass
 from pathlib import Path
@@ -48,6 +50,10 @@ def subprocess_run(command):
 def check_topology_running(topology_file):
     result = subprocess_run(f"clab inspect -t {topology_file}")
     return result.returncode == 0
+
+def restart_script():
+    python = sys.executable
+    os.execl(python, python, *sys.argv)      
 
 def read_cvp_credentials():
     # Define the path to the .cvpcreds file
@@ -108,6 +114,112 @@ def get_cvp_credentials():
     except Exception as e:
         print(f"An error occurred: {e}")
         
+def docker_functions():
+    # Import and Pull Docker images
+    print("----------------------------------------")
+    print("Importing Docker Images")
+    print("----------------------------------------")
+    print("")
+    
+    tar_file_paths = find_tar_files('./EOS', 'cEOS-lab')
+    if tar_file_paths:
+        for tar_file_path in tar_file_paths:
+            repository, tag = prepare_image(tar_file_path)
+            if repository and tag:
+                stop_animation = threading.Event()
+                animation_thread = animated_message(stop_animation, f"Importing {repository}:{tag} Docker Image")
+                try:
+                    import_image(tar_file_path, repository, tag)
+                finally:
+                    stop_animation.set()
+                    animation_thread.join()
+                logging.info("Done")
+            else:
+                print("Failed to import Docker image")
+    else:
+        handle_missing_tar()
+
+def prepare_image():
+    tar_file_path = find_tar_files('./EOS', 'cEOS-lab')
+    if tar_file_path:
+        repository = 'ceosimage'
+        tag = extract_tag(os.path.basename(tar_file_path), 'cEOS-lab')
+        if tag:
+            return repository, tag
+    handle_missing_tar()
+    return None, None
+def find_tar_files(directory, prefix):
+    tar_file_paths = []
+    for file in os.listdir(directory):
+        if file.startswith(prefix) and file.endswith('.tar'):
+            tar_file_paths.append(os.path.join(directory, file))
+    return tar_file_paths
+
+def extract_tag(filename, prefix):
+    if filename.startswith(prefix) and filename.endswith('.tar'):
+        version = filename[len(prefix) + 1:-4]
+        return version
+    return None
+
+def import_image(repository, tag):
+    tar_file_path = find_tar_files('./EOS', 'cEOS-lab')
+    docker_command = ['docker', 'import', tar_file_path, f"{repository}:{tag}"]
+    result = subprocess.run(docker_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    if result.returncode != 0:
+        print("Error importing Docker image:", result.stderr.decode())
+        handle_missing_tar()
+def handle_missing_tar():
+    print("-" * 60)
+    print("ERROR: There are no docker images with the 'ceosimage' tag")
+    print("Please place the cEOS-lab.tar file in the EOS directory or manually import the image into docker using the 'docker import' command.")
+    print("-" * 60)
+    user_input = input("Press 'y' if you have added the file to the EOS directory or 'n' to exit: ").strip().lower()
+    if user_input == 'y':
+        restart_script()
+    elif user_input == 'n':
+        print("Exiting script...")
+        terminate_script()
+    else:
+        print("Invalid input. Exiting script...")
+        terminate_script()
+
+def eos_version_check(version, threshold):
+    def parse_version(v):
+        match = re.match(r'(\d+)\.(\d+)\.(\d+)([A-Za-z]*)', v)
+        if match:
+            major, minor, patch, suffix = match.groups()
+            return int(major), int(minor), int(patch), suffix
+        return 0, 0, 0, ''
+    
+    version_parts = parse_version(version)
+    threshold_parts = parse_version(threshold)
+    
+    return version_parts < threshold_parts
+
+def check_ceosimage():
+    client = docker.from_env()
+    images = client.images.list()
+    threshold_version = '4.32.0F'
+    found_ceosimage = False
+
+    for image in images:
+        ceosimage_tags = [tag for tag in image.tags if tag.startswith('ceosimage')]
+        if ceosimage_tags:
+            found_ceosimage = True
+            for tag in ceosimage_tags:
+                _, version = tag.split(':')
+                if eos_version_check(version, threshold_version):
+                    clear_console()
+                    print("-" * 60)
+                    print(f"WARNING: {tag} is below the supported version. In versions prior to {threshold_version} the ceos-lab image requires a cgroups v1 environment")
+                    print(f"Some linux distributions might be configured to use cgroups v2 out of the box which will stop the devices from booting")
+                    print(f"If this issue occurs, either upgrade to {threshold_version} or visit https://containerlab.dev/manual/kinds/ceos/#cgroups-v1 ")
+                    print("-" * 60)
+                    input("Press any key to continue...")
+
+    if not found_ceosimage:
+        clear_console()
+        docker_functions()
 def create_inventory(cvp_ip, cvp_username, cvp_password):
     try:
 
@@ -149,14 +261,6 @@ def create_inventory(cvp_ip, cvp_username, cvp_password):
         print(f"The file {e.filename} does not exist.")
     except Exception as e:
         print(f"An error occurred: {e}")    
-
-
-
-    except FileNotFoundError as e:
-        print(f"The file {e.filename} does not exist.")
-    except Exception as e:
-        print(f"An error occurred: {e}")
-
 
 def animated_message(stop_event, message="Processing", delay=0.5):
     def animate():
@@ -685,6 +789,9 @@ def main():
         if cvp_username is None or cvp_password is None or cvp_ip is None:
             logging.error("Invalid or missing CVP credentials.")
             terminate_script()
+            
+        # Check for ceosimage and validate version
+        check_ceosimage()
 
         # Display main menu and handle user choice
         while True:
