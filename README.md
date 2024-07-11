@@ -11,6 +11,7 @@ Features include:
 - Automatic provisioning into CloudVision (CVP)
 - Automatic creation of management configlets
 - Automatically runs both Build and Deploy playbooks
+- Automatically import docker images
 - Ability to destroy the containerlab and remove all containers, configlets and devices from CVP
 - View Ansible output from Build and Deploy playbooks after they have run
 
@@ -43,9 +44,10 @@ Once everything has been installed, clone the repository using `git clone https:
 After the repo has been cloned, navigate into the directory and run `sudo pip install -r requirements.txt` to install the python modules required. 
 
 ## Python Modules Used
-I have utilised two external python modules in this script:
+I have utilised three external python modules in this script:
 - [cvPrac](https://github.com/aristanetworks/cvprac) - Which is a RESTful API client for Cloudvision® Portal (CVP) which can be used for building applications that work with Arista CVP
 - [requests](https://pypi.org/project/requests/) - The python HTTP library
+- [docker](https://pypi.org/project/docker/) - The Python Docker library
 
 # avd-helper Usage
 ContainerLab requires elevated privileges so you will need to run the script with sudo.
@@ -53,9 +55,11 @@ ContainerLab requires elevated privileges so you will need to run the script wit
 
 On first run, the script will prompt for your CVP credentials. It will store these credentials in a .cvpcreds file and it will then use this file for CVP info for every subsequent run.<br />
 If you need to change your CVP details, simple use the 'Change CVP Credentials' menu option.<br />
+It will also check to see if the cEOS-lab image has been imported into docker, if not, it will check the EOS folder for a valid .tar file and automatically import it.<br />
 The 'Deploy Lab' menu option will deploy the lab, register the devices with CVP, provision the devices in CVP, and run the Ansible Build and Deploy playbooks.<br />
 The 'Cleanup Lab' menu option will destroy the lab, decommission the devices from CVP, and remove all configlets and containers from CVP. <br />
 The 'Show Ansible Build Log' and 'Show Ansible Deploy Log' menu options will show the output from the 'ansible-playbook' as it doesnt print to the console during deployment.
+
 
 
 # Topologies
