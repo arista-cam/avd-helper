@@ -2,7 +2,7 @@ hostname {{ .ShortName }}
 username {{cvp_username}} privilege 15 secret {{cvp_password}}
 !
 daemon TerminAttr
-   exec /usr/bin/TerminAttr -cvcompression=gzip -smashexcludes=ale,flexCounter,hardware,kni,pulse,strata -cvaddr={{cvp_ip}}:9910 -cvauth=token,/tmp/token -cvvrf=default -taillogs
+   exec /usr/bin/TerminAttr -cvcompression=gzip -smashexcludes=ale,flexCounter,hardware,kni,pulse,strata -cvaddr={{cvp_ip}}:9910 -cvauth=token,/tmp/token -cvvrf=MGMT -taillogs
    no shutdown
 !
 service routing protocols model multi-agent
