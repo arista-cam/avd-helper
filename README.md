@@ -8,11 +8,9 @@ The code you will find in this repository is most likely offensive to developers
 This 'code' is designed to use AVD to deploy a Spine/Leaf topology via CVP using ContainerLab devices.
 Features include:
 - Automatically deploy containerlab toplogy
-- Automatic provisioning into CloudVision (CVP)
+- Automatic provisioning into On-Prem CVP or CVaaS
 - Automatic creation of management configlets
 - Automatically runs both Build and Deploy playbooks
-- Automatically import docker images
-- Ability to destroy the containerlab and remove all containers, configlets and devices from CVP
 - View Ansible output from Build and Deploy playbooks after they have run
 
 # Requirements
@@ -34,11 +32,6 @@ In order for arista-avd-clab to work, it requires the following:
 **Ansible** installation guides can be found [here](https://docs.ansible.com/ansible/latest/installation_guide/intro_installation.html)<br />
 **AVD** installation guides can be found [here](https://avd.sh/en/stable/docs/installation/collection-installation.html)
 
-# cEOS Install Instructions
-Once a supported cEOS images has been downloaded use the `docker import {CEOS FILENAME} {IMAGE NAME}` command, e.g. `docker import cEOS-lab-4.32.0F.tar ceosimage:4.32.0F`.
-This command imports the container image that you downloaded and saves it into the docker image repository using the *image_name* you have given it.
-You need to follow the correct image naming standard of ceosimage:#.##.##(.#)
-
 # avd-clab Install Instructions
 Once everything has been installed, clone the repository using `git clone https://github.com/CameronPrior/avd-clab.git` into a directory of your choosing.
 After the repo has been cloned, navigate into the directory and run `sudo pip install -r requirements.txt` to install the python modules required. 
@@ -53,13 +46,19 @@ I have utilised three external python modules in this script:
 ContainerLab requires elevated privileges so you will need to run the script with sudo.
 `sudo Python3 avd_helper.py` should get you started.
 
-On first run, the script will prompt for your CVP credentials. It will store these credentials in a .cvpcreds file and it will then use this file for CVP info for every subsequent run.<br />
-If you need to change your CVP details, simple use the 'Change CVP Credentials' menu option.<br />
-It will also check to see if the cEOS-lab image has been imported into docker, if not, it will check the EOS folder for a valid .tar file and automatically import it.<br />
+On first run, the script will prompt you for a CVP Service Token and a Device Token.<br />
+The script provides instructions on how to generate these tokens so just follow those and you will be fine.<br />
 The 'Deploy Lab' menu option will deploy the lab, register the devices with CVP, provision the devices in CVP, and run the Ansible Build and Deploy playbooks.<br />
 The 'Cleanup Lab' menu option will destroy the lab, decommission the devices from CVP, and remove all configlets and containers from CVP. <br />
-The 'Show Ansible Build Log' and 'Show Ansible Deploy Log' menu options will show the output from the 'ansible-playbook' as it doesnt print to the console during deployment.
 
+# cEOS Install Instructions
+The script will check to see if you have a valid cEOS image already imported into docker, if you dont it will check the EOS folder for a valid cEOS-lab.tar file.
+If it cant find one there you will get an error which leaves you with two options, either copy a valid cEOS-lab.tar file to the EOS directory and run the script again OR manually import the image into docker.
+
+Manual Import Instructions
+Once a supported cEOS image has been downloaded use the `docker import {CEOS FILENAME} {IMAGE NAME}` command, e.g. `docker import cEOS-lab-4.32.0F.tar ceosimage:4.32.0F`.
+This command imports the container image that you downloaded and saves it into the docker image repository using the *image_name* you have given it.
+You need to follow the correct image naming standard of ceosimage:#.##.##(.#)
 
 
 # Topologies
@@ -71,12 +70,11 @@ The following topologies are included:
 # AVD Generated Documentation
 AVD will generate Fabric and Device documentation that can be found in the ./sites/dc1 folder after the script has finished running.
 
-
-# CloudVision Setup
+# On-Prem CloudVision Setup
 In order to use CVP with ContainerLab, the CVP host needs a static route configured back to the management range you have configured.
 When configuring CVP, I used the same interface for both the Cluster Interface and the Device Interface.
-After CVP is up and running, add a static route using the `ip route add 172.100.100.0 via {DOCKER HOST IP} dev eth0` command.
-The default range used for this deployment is 172.100.100.0/24
+After CVP is up and running, add a static route using the `ip route add 172.16.100.0 via {DOCKER HOST IP} dev eth0` command.
+The default range used for this deployment is 172.16.100.0/24
 
 ### CloudVision Setup Diagram
 ![CVP Config](https://user-images.githubusercontent.com/680877/222660607-a5fa8d7a-d500-43aa-9400-3a24ed21c60d.png)
