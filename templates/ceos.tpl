@@ -1,11 +1,9 @@
 hostname {{ .ShortName }}
-username {{cvp_username}} privilege 15 secret {{cvp_password}}
-!
-daemon TerminAttr
-   exec /usr/bin/TerminAttr -cvcompression=gzip -smashexcludes=ale,flexCounter,hardware,kni,pulse,strata -cvaddr={{cvp_ip}}:9910 -cvauth=token,/tmp/token -cvvrf=MGMT -taillogs
-   no shutdown
+username arista privilege 15 secret arista
 !
 service routing protocols model multi-agent
+!
+ip name-server vrf MGMT {{dns_server}}
 !
 vrf instance MGMT
 !
@@ -29,5 +27,7 @@ management api http-commands
    !
    vrf MGMT
       no shutdown
+!
+ntp server vrf MGMT {{ntp_server}}
 !
 end

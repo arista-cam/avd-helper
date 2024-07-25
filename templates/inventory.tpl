@@ -1,9 +1,9 @@
 ---
 dc1:
   children:
-    CVP:
+    {{cvp_group}}:
       hosts:
-        {{cvp_ip}}:
+        {{cvp_host}}:
     dc1_fabric:
       children:
         dc1_spines:

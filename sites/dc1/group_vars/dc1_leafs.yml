@@ -1,3 +1,7 @@
 ---
 # DC1 leaf specific vars
 type: l3leaf
+dc_name: dc1
+rack: rack1
+pod_name: pod1
+

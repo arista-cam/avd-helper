@@ -1,822 +1,1088 @@
 import os
-import ssl
-import sys
-import json
-import time
 import logging
-import requests
 import subprocess
-import threading
+import paramiko
+import yaml
+import time
+import ssl
+import requests
 import uuid
-import datetime
+import sys
 import docker
 import re
-from cvprac.cvp_client import CvpClient
-from getpass import getpass
+import shutil
+import threading
 from pathlib import Path
+from cvprac.cvp_client import CvpClient
 
-# Disable SSL warnings and verification
+
 ssl._create_default_https_context = ssl._create_unverified_context
 requests.packages.urllib3.disable_warnings()
 
-# Configure logging
-logging.basicConfig(level=logging.CRITICAL, format='%(asctime)s - %(levelname)s - %(message)s')
-logging.getLogger().handlers = []
-cvprac_logger = logging.getLogger('cvprac')
-cvprac_logger.handlers = []
-cvprac_logger.propagate = False
 
-# Get the directory of the script
-script_dir = Path(__file__).parent
+class ClabHelper:
+    def __init__(self):
+        self.script_dir = Path(__file__).parent
+        self.topology_file = self.script_dir / "topology.yaml"
+        self.token_file = self.script_dir / "token.tok"
+        self.cvp_file = self.script_dir / "cvp_info.txt"
+        self.network_file = self.script_dir / "network_info.txt"
+        self.template_ceos_file = self.script_dir / "templates" / "ceos.tpl"
+        self.output_ceos_file = self.script_dir / "ceos.cfg"
+        self.template_inventory_file = self.script_dir / "templates" / "inventory.tpl"
+        self.output_inventory_file = self.script_dir / "sites" / "dc1" / "inventory.yml"
+        self.template_cvaas_auth_file = self.script_dir / "templates" / "cvaas_auth.tpl"
+        self.output_cvaas_auth_file = (
+            self.script_dir
+            / "sites"
+            / "dc1"
+            / "group_vars"
+            / "CVAAS"
+            / "cvaas_auth.yml"
+        )
+        self.template_deploy_file = self.script_dir / "templates" / "cv_deploy.tpl"
+        self.output_deploy_file = self.script_dir / "playbooks" / "cv_deploy.yml"
+        self.doc_dir = self.script_dir / "sites" / "dc1" / "documentation"
+        self.intend_dir = self.script_dir / "sites" / "dc1" / "intended"
+        self.cvaas_dir = self.script_dir / "sites" / "dc1" / "group_vars" / "CVAAS"
+        self.creds = {}
+        self.tokens = {}
+        self.cvp_token = None
+        self.device_token = None
+        self.cvp_ip = None
+        self.api_server = None
+        self.cvp_type = None
+        self.is_cvaas = None
+        self.dns_server = None
+        self.ntp_server = None
+        self.device_addr = []
+        self.cvp_client = CvpClient()
+        self.inventory = self.script_dir / "sites/dc1/inventory.yml"
+        self.log_folder = self.script_dir / "logs"
+        self.clab_log = self.log_folder / "clab.log"
+        self.clab_logger = self.setup_logger("clab_logger", self.clab_log)
+        self.ssh_log = self.log_folder / "ssh.log"
+        self.ssh_logger = self.setup_logger("ssh_logger", self.ssh_log)
+        self.cvp_log = self.log_folder / "cvp.log"
+        self.cvp_logger = self.setup_logger("cvp_logger", self.cvp_log)
+        self.ansible_error_log = self.log_folder / "ansible_error_log.log"
+        self.ansible_error_logger = self.setup_logger(
+            "ansible_error_logger", self.ansible_error_log
+        )
+        self.ansible_build_log = self.log_folder / "ansible_build_output.log"
+        self.ansible_deploy_log = self.log_folder / "ansible_deploy_output.log"
+        self.log_location = None
+        self.stop_event = threading.Event()
+        self.animation_threads = []
 
-class Info:
-    def __init__(self, deploy_command, topology_file, destroy_command, build_log, deploy_log):
-        self.deploy_command = deploy_command
-        self.topology_file = topology_file
-        self.destroy_command = destroy_command
-        self.build_log = build_log
-        self.deploy_log = deploy_log
+    @staticmethod
+    def superuser_required(func):
+        def wrapper(self, *args, **kwargs):
+            if os.getuid() != 0:
+                logging.error(
+                    "Container lab needs superuser privileges to run. Please restart with 'sudo' or as root."
+                )
+                return
+            return func(self, *args, **kwargs)
 
-def load_config(file_path):
-    with open(file_path) as file:
-        return json.load(file)
+        return wrapper
 
-def clear_console():
-    os.system("clear")
+    def clear_console(self):
+        os.system("clear")
 
-def subprocess_run(command):
-    return subprocess.run(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-
-def check_topology_running(topology_file):
-    result = subprocess_run(f"clab inspect -t {topology_file}")
-    return result.returncode == 0
-
-def restart_script():
-    python = sys.executable
-    os.execl(python, python, *sys.argv)      
-
-def read_cvp_credentials():
-    # Define the path to the .cvpcreds file
-    creds_file = script_dir / '.cvpcreds'
-
-    try:
-        # Check if .cvpcreds file exists
-        if not creds_file.exists():
-            get_cvp_credentials()  # Initialize CVP credentials capture
-
-        # Read the credentials from the file
-        with open(creds_file, 'r') as file:
-            lines = file.readlines()
-        
-        # Parse the credentials
-        creds = {}
-        for line in lines:
-            key, value = line.strip().split('=')
-            creds[key] = value
-
-        cvp_ip = creds.get('cvp_ip')
-        cvp_username = creds.get('cvp_username')
-        cvp_password = creds.get('cvp_password')
-
-        return cvp_ip,cvp_username, cvp_password
-
-    except Exception as e:
-        print(f"An error occurred: {e}")
-        return None, None
-
-def get_cvp_credentials():
-    try:
-        clear_console()
-        # Define the file paths
-        creds_file = script_dir / '.cvpcreds'
-
-        print("----------------------------------------")
-        print("CVP Server Information")
-        print("----------------------------------------")
-        print("")
-        # Prompt the user for an IP address
-        cvp_ip = input("Please enter the CVP IP address: ")
-
-        # Prompt the user for the CVP username and password
-        cvp_username = input("Please enter the CVP username: ")
-        cvp_password = getpass("Please enter the CVP password: ")
-
-        # Save the credentials in the .cvpcreds file
-        with open(creds_file, 'w') as file:
-            file.write(f"cvp_ip={cvp_ip}\n")
-            file.write(f"cvp_username={cvp_username}\n")
-            file.write(f"cvp_password={cvp_password}\n")
-
-        # Restart the script from the beginning
+    def restart_script(self):
         python = sys.executable
         os.execl(python, python, *sys.argv)
 
-    except Exception as e:
-        print(f"An error occurred: {e}")
-        
-def docker_functions():
-    # Import and Pull Docker images
-    print("----------------------------------------")
-    print("Importing Docker Images")
-    print("----------------------------------------")
-    print("")
-    
-    tar_file_paths = find_tar_files('./EOS', 'cEOS-lab')
-    if tar_file_paths:
-        for tar_file_path in tar_file_paths:
-            repository, tag = prepare_image(tar_file_path)
-            if repository and tag:
-                stop_animation = threading.Event()
-                animation_thread = animated_message(stop_animation, f"Importing {repository}:{tag} Docker Image")
-                try:
-                    import_image(tar_file_path, repository, tag)
-                finally:
-                    stop_animation.set()
-                    animation_thread.join()
-                logging.info("Done")
+    def setup_logger(self, name, log_file, level=logging.INFO):
+
+        formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
+        handler = logging.FileHandler(log_file)
+        handler.setFormatter(formatter)
+
+        logger = logging.getLogger(name)
+        logger.setLevel(level)
+        logger.addHandler(handler)
+
+        return logger
+
+    def error_message(self, error_info):
+        self.stop_event.set()  # Stop all animations
+        # Wait for all animation threads to finish
+        for thread in self.animation_threads:
+            thread.join()
+
+        # Define the border and message lines
+        border_char = "*"
+        border_length = 68
+        error_lines = [
+            "An Error has occurred",
+            f"Please check the {self.log_location} for more information",
+        ]
+
+        # Calculate the length of the border based on the longest line
+        max_length = max(len(line) for line in error_lines)
+        border_length = max_length + 4  # Add padding for borders
+
+        # Print the error message
+        self.clear_console()
+        print(border_char * border_length)
+        for line in error_lines:
+            print(f"! {line.ljust(max_length)} !")
+        print(border_char * border_length)
+        print("")
+        input("Please press Enter to return to the Main Menu")
+        self.main()
+
+    def subprocess_run(self, command):
+        result = subprocess.run(
+            command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+        )
+        if result.returncode != 0:
+            self.clab_logger.error(
+                f"Command failed with error: {result.stderr.decode()}"
+            )
+            self.log_location = "Container Lab Log file"
+            self.error_message()
+        else:
+            self.clab_logger.info(f"Command output: {result.stdout.decode()}")
+        return result
+
+    def check_ceosimage(self):
+
+        client = docker.from_env()
+        images = client.images.list()
+        threshold_version = "4.32.0F"
+        found_ceosimage = False
+
+        for image in images:
+            ceosimage_tags = [tag for tag in image.tags if tag.startswith("ceosimage")]
+            if ceosimage_tags:
+                found_ceosimage = True
+                for tag in ceosimage_tags:
+                    _, version = tag.split(":")
+
+                    # Parsing the version
+                    version_match = re.match(r"(\d+)\.(\d+)\.(\d+)([A-Za-z]*)", version)
+                    threshold_match = re.match(
+                        r"(\d+)\.(\d+)\.(\d+)([A-Za-z]*)", threshold_version
+                    )
+
+                    if version_match and threshold_match:
+                        version_parts = [
+                            int(part) for part in version_match.groups()[:3]
+                        ] + [version_match.group(4)]
+                        threshold_parts = [
+                            int(part) for part in threshold_match.groups()[:3]
+                        ] + [threshold_match.group(4)]
+
+                        if version_parts < threshold_parts:
+                            self.clear_console()
+                            print("-" * 60)
+                            print(
+                                f"WARNING: {tag} is below the supported version. In versions prior to {threshold_version} the ceos-lab image requires a cgroups v1 environment"
+                            )
+                            print(
+                                f"Some linux distributions might be configured to use cgroups v2 out of the box which will stop the devices from booting"
+                            )
+                            print(
+                                f"If this issue occurs, either upgrade to {threshold_version} or visit https://containerlab.dev/manual/kinds/ceos/#cgroups-v1 "
+                            )
+                            print("-" * 60)
+                            input("Press any key to continue...")
+
+        if not found_ceosimage:
+            self.clear_console()
+            self.docker_functions()
+
+    def docker_functions(self):
+        self.clear_console()
+        print("----------------------------------------")
+        print("Importing Docker Images")
+        print("----------------------------------------")
+        print("")
+
+        # Finding tar files
+        tar_file_paths = []
+        for file in os.listdir("./EOS"):
+            if file.startswith("cEOS-lab") and file.endswith(".tar"):
+                tar_file_paths.append(os.path.join("./EOS", file))
+
+        if tar_file_paths:
+            for tar_file_path in tar_file_paths:
+                repository = "ceosimage"
+                filename = os.path.basename(tar_file_path)
+                tag = None
+                if filename.startswith("cEOS-lab") and filename.endswith(".tar"):
+                    tag = filename[len("cEOS-lab") + 1 : -4]
+
+                if repository and tag:
+                    docker_command = [
+                        "docker",
+                        "import",
+                        tar_file_path,
+                        f"{repository}:{tag}",
+                    ]
+                    result = subprocess.run(
+                        docker_command,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                    )
+                    if result.returncode != 0:
+                        print("Error importing Docker image:", result.stderr.decode())
+                        print("-" * 60)
+                        print(
+                            "The cEOS image has failed to import, please use the manual 'docker import' command instead"
+                        )
+                        print("-" * 60)
+                        input("Press any key to exit")
+                        sys.exit(0)
+                else:
+                    print("Failed to import Docker image")
+                    print("-" * 60)
+                    print(
+                        "The cEOS image has failed to import, please use the manual 'docker import' command instead"
+                    )
+                    print("-" * 60)
+                    input("Press any key to exit")
+                    sys.exit(0)
+        else:
+            print("-" * 60)
+            print("ERROR: There are no docker images with the 'ceosimage' tag")
+            print(
+                "Please place the cEOS-lab.tar file in the EOS directory or manually import the image into docker using the 'docker import' command."
+            )
+            print("-" * 60)
+            while True:
+                user_input = (
+                    input(
+                        "Press 'y' if you have added the file to the EOS directory or 'n' to exit: "
+                    )
+                    .strip()
+                    .lower()
+                )
+
+                if user_input == "y":
+                    self.restart_script()
+                    break
+                elif user_input == "n":
+                    self.clear_console()
+                    sys.exit(0)
+                    break
+                else:
+                    print("Invalid input. Please enter 'y' to restart or 'n' to exit.")
+
+    def check_files(self):
+        files = {
+            "token": self.token_file,
+            "network": self.network_file,
+            "cvp": self.cvp_file,
+        }
+
+        if (
+            not files["token"].exists()
+            and not files["network"].exists()
+            and files["cvp"].exists()
+        ):
+            files["cvp"].unlink()
+        elif (
+            not files["token"].exists()
+            and not files["cvp"].exists()
+            and files["network"].exists()
+        ):
+            files["network"].unlink()
+        elif (
+            not files["token"].exists()
+            and files["cvp"].exists()
+            and files["network"].exists()
+        ):
+            files["token"].unlink()
+
+        if (
+            not files["token"].exists()
+            or not files["cvp"].exists()
+            or not files["network"].exists()
+        ):
+            self.get_cvp_credentials()
+            self.get_network_info()
+
+        if not os.path.exists(self.log_folder):
+            os.makedirs(self.log_folder)
+
+    def read_cvp_credentials(self):
+        with open(self.cvp_file, "r") as file:
+            lines = file.readlines()
+        self.creds = {
+            line.strip().split("=")[0]: line.strip().split("=")[1] for line in lines
+        }
+        self.cvp_ip = self.creds.get("cvp_ip", None)
+        self.cvp_type = self.creds.get("cvp_type", None)
+
+        with open(self.token_file, "r") as file:
+            lines = file.readlines()
+        self.tokens = {
+            line.strip().split("=")[0]: line.strip().split("=")[1] for line in lines
+        }
+        self.cvp_token = self.tokens.get("cvp_token", None)
+        self.device_token = self.tokens.get("device_token", None)
+
+        if self.cvp_type == "cvaas":
+            self.is_cvaas = True
+            self.api_server = self.creds.get("api_server", None)
+        else:
+            self.is_cvaas = False
+
+    def get_cvp_version(self):
+        self.clear_console()
+        print("----------------------------------------")
+        print("Which version of CVP are you using?")
+        print("----------------------------------------")
+        print("1. CloudVision VM")
+        print("2. CVaaS\n")
+
+        while True:
+            cvp_choice = input("Enter your choice: ")
+            if cvp_choice in ["1", "2"]:
+                return "cvp_vm" if cvp_choice == "1" else "cvaas"
             else:
-                print("Failed to import Docker image")
-    else:
-        handle_missing_tar()
+                logging.error("Invalid choice for CVP type. Please try again.")
 
-def prepare_image():
-    tar_file_path = find_tar_files('./EOS', 'cEOS-lab')
-    if tar_file_path:
-        repository = 'ceosimage'
-        tag = extract_tag(os.path.basename(tar_file_path), 'cEOS-lab')
-        if tag:
-            return repository, tag
-    handle_missing_tar()
-    return None, None
-def find_tar_files(directory, prefix):
-    tar_file_paths = []
-    for file in os.listdir(directory):
-        if file.startswith(prefix) and file.endswith('.tar'):
-            tar_file_paths.append(os.path.join(directory, file))
-    return tar_file_paths
+    def get_cvaas_instance(self):
+        self.clear_console()
+        print("----------------------------------------")
+        print("CVP Server Information")
+        print("----------------------------------------")
+        print("1. United States 1a")
+        print("2. United States 1c")
+        print("3. Japan")
+        print("4. Germany")
+        print("5. Australia")
+        print("6. Canada")
+        print("7. United Kingdom")
+        print("8. Dev")
+        print("9. Staging (Most Likely This One)\n")
 
-def extract_tag(filename, prefix):
-    if filename.startswith(prefix) and filename.endswith('.tar'):
-        version = filename[len(prefix) + 1:-4]
-        return version
-    return None
+        instance_mapping = {
+            "1": "www.cv-prod-us-central1-a.arista.io",
+            "2": "www.cv-prod-us-central1-c.arista.io",
+            "3": "www.cv-prod-apnortheast-1.arista.io",
+            "4": "www.cv-prod-euwest-2.arista.io",
+            "5": "www.cv-prod-ausoutheast-1.arista.io",
+            "6": "www.cv-prod-na-northeast1-b.arista.io",
+            "7": "www.cv-prod-cv-prod-uk-1.arista.io",
+            "8": "www.cv-staging.corp.arista.io",
+            "9": "www.cv-staging.corp.arista.io",
+            "": "www.cv-staging.corp.arista.io",
+        }
 
-def import_image(repository, tag):
-    tar_file_path = find_tar_files('./EOS', 'cEOS-lab')
-    docker_command = ['docker', 'import', tar_file_path, f"{repository}:{tag}"]
-    result = subprocess.run(docker_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    if result.returncode != 0:
-        print("Error importing Docker image:", result.stderr.decode())
-        handle_missing_tar()
-def handle_missing_tar():
-    print("-" * 60)
-    print("ERROR: There are no docker images with the 'ceosimage' tag")
-    print("Please place the cEOS-lab.tar file in the EOS directory or manually import the image into docker using the 'docker import' command.")
-    print("-" * 60)
-    user_input = input("Press 'y' if you have added the file to the EOS directory or 'n' to exit: ").strip().lower()
-    if user_input == 'y':
-        restart_script()
-    elif user_input == 'n':
-        print("Exiting script...")
-        terminate_script()
-    else:
-        print("Invalid input. Exiting script...")
-        terminate_script()
+        while True:
+            cvp_instance = input("Please select the CVaaS instance [9]: ")
+            if cvp_instance in instance_mapping:
+                return instance_mapping[cvp_instance]
+            else:
+                logging.error("Invalid choice. Please try again.")
 
-def eos_version_check(version, threshold):
-    def parse_version(v):
-        match = re.match(r'(\d+)\.(\d+)\.(\d+)([A-Za-z]*)', v)
-        if match:
-            major, minor, patch, suffix = match.groups()
-            return int(major), int(minor), int(patch), suffix
-        return 0, 0, 0, ''
-    
-    version_parts = parse_version(version)
-    threshold_parts = parse_version(threshold)
-    
-    return version_parts < threshold_parts
+    def get_cvp_credentials(self):
+        cvp_version = self.get_cvp_version()
+        self.clear_console()
 
-def check_ceosimage():
-    client = docker.from_env()
-    images = client.images.list()
-    threshold_version = '4.32.0F'
-    found_ceosimage = False
+        if cvp_version == "cvaas":
+            cvp_ip = self.get_cvaas_instance()
+        else:
+            print("----------------------------------------")
+            print("CVP Server Information")
+            print("----------------------------------------")
+            cvp_ip = input("Please enter the CVP IP address: ")
+            print("")
 
-    for image in images:
-        ceosimage_tags = [tag for tag in image.tags if tag.startswith('ceosimage')]
-        if ceosimage_tags:
-            found_ceosimage = True
-            for tag in ceosimage_tags:
-                _, version = tag.split(':')
-                if eos_version_check(version, threshold_version):
-                    clear_console()
-                    print("-" * 60)
-                    print(f"WARNING: {tag} is below the supported version. In versions prior to {threshold_version} the ceos-lab image requires a cgroups v1 environment")
-                    print(f"Some linux distributions might be configured to use cgroups v2 out of the box which will stop the devices from booting")
-                    print(f"If this issue occurs, either upgrade to {threshold_version} or visit https://containerlab.dev/manual/kinds/ceos/#cgroups-v1 ")
-                    print("-" * 60)
-                    input("Press any key to continue...")
+        api_server_mapping = {
+            "cv-prod-us-central1-a.arista.io": "apiserver.cv-prod-us-central1-a.arista.io:443",
+            "cv-prod-us-central1-c.arista.io": "apiserver.cv-prod-us-central1-c.arista.io:443",
+            "cv-prod-apnortheast-1.arista.io": "apiserver.cv-prod-apnortheast-1.arista.io:443",
+            "cv-prod-euwest-2.arista.io": "apiserver.cv-prod-euwest-2.arista.io:443",
+            "cv-prod-ausoutheast-1.arista.io": "apiserver.cv-prod-ausoutheast-1.arista.io:443",
+            "cv-prod-na-northeast1-b.arista.io": "apiserver.cv-prod-na-northeast1-b.arista.io:443",
+            "cv-prod-cv-prod-uk-1.arista.io": "apiserver.cv-prod-cv-prod-uk-1.arista.io:443",
+            "cv-staging.corp.arista.io": "apiserver.cv-staging.corp.arista.io:443",
+        }
 
-    if not found_ceosimage:
-        clear_console()
-        docker_functions()
-def create_inventory(cvp_ip, cvp_username, cvp_password):
-    try:
+        api_server = api_server_mapping.get(
+            cvp_ip, "apiserver.cv-staging.corp.arista.io:443"
+        )
 
-        # Define file paths using Pathlib
-        template_inventory_file = script_dir / 'templates' / 'inventory.tpl'
-        template_deploy_file = script_dir / 'templates' / 'deploy_dc1_cvp.tpl'
-        template_ceos_file = script_dir / 'templates' / 'ceos.tpl'
-        template_dc1_vars_file = script_dir / 'templates' / 'dc1.tpl'
-        output_inventory_file = script_dir / 'sites' / 'dc1' / 'inventory.yml'
-        output_deploy_file = script_dir / 'playbooks' / 'deploy_dc1_cvp.yml'
-        output_ceos_file = script_dir / 'ceos.cfg'
-        output_dc1_vars_file = script_dir / 'sites' / 'dc1' / 'group_vars' / 'dc1.yml'
+        with open(self.cvp_file, "w") as file:
+            file.write(f"cvp_type={cvp_version}\n")
+            file.write(f"cvp_ip={cvp_ip}\n")
+            if cvp_version == "cvaas":
+                file.write(f"api_server={api_server}\n")
+
+        self.clear_console()
+        print("**************************************************")
+        print("\033[1mCVP Service Account Token\033[0m")
+        print("**************************************************")
+        print(
+            f"\nTo generate a service account token, navigate to: \n\033[4mhttps://{cvp_ip}/cv/settings/aaa-service-accounts\033[0m"
+        )
+        print("Hint: You can use CTRL + Click to open the link in a new window\n")
+        print("**************************************************")
+        print("\033[1mSteps:\033[0m")
+        print("**************************************************")
+        print(
+            "1. Click the blue \033[1m+New Server Account\033[0m button and fill in the details:\n"
+        )
+        print("   \033[1mService Account Name:\033[0m Ansible")
+        print("   \033[1mDescription:\033[0m Ansible Service Account")
+        print("   \033[1mStatus:\033[0m Enabled")
+        print("   \033[1mRole:\033[0m network-admin\n")
+        print(
+            "2. Click \033[1mCreate\033[0m and then select the \033[1mansible\033[0m service account from the list below."
+        )
+        print(
+            "3. Under the \033[1mGenerate Service Account Token\033[0m section, fill in the Description field."
+        )
+        print(
+            "4. Select a \033[1mValid Until\033[0m date and click the \033[1mGenerate\033[0m button.\n"
+        )
+
+        cvp_token = input("Please paste the CVP service account token here: ")
+        self.clear_console()
+        print("**************************************************")
+        print("\033[1mCVP Device Token\033[0m")
+        print("**************************************************")
+        print(
+            f"\nTo generate a Device Onboarding Token, navigate to: \n\033[4mhttps://{cvp_ip}/cv/devices/device-onboarding\033[0m"
+        )
+        print("Hint: You can use CTRL + Click to open the link in a new window\n")
+        print("**************************************************")
+        print("\033[1mSteps:\033[0m")
+        print("**************************************************")
+        print("1. Click the \033[1mOnboard with Certificates\033[0m option")
+        print(
+            "2. Click the dropdown under \033[1mGenerate the Token\033[0m and select a timeframe for token expiration"
+        )
+        print("3. Click the blue \033[1mGenerate\033[0m button \n")
+
+        device_token = input("Please paste the device token: ")
+
+        with open(self.token_file, "w") as file:
+            file.write(f"cvp_token={cvp_token}\n")
+            file.write(f"device_token={device_token}")
+
+    def read_network_info(self):
+        with open(self.network_file, "r") as file:
+            lines = file.readlines()
+        self.creds = {
+            line.strip().split("=")[0]: line.strip().split("=")[1] for line in lines
+        }
+        self.dns_server = self.creds.get("dns_server", None)
+        self.ntp_server = self.creds.get("ntp_server", None)
+
+    def get_network_info(self):
+        self.clear_console()
+        print("----------------------------------------")
+        print("Network Information")
+        print("----------------------------------------")
+        print("")
+        dns_server = input("Please enter the IP address of your DNS server: ")
+        ntp_server = input("Please enter the IP address of your NTP server: ")
+
+        with open(self.network_file, "w") as file:
+            file.write(f"dns_server={dns_server}\n")
+            file.write(f"ntp_server={ntp_server}")
+
+    def create_inventory(self):
 
         # Function to handle template processing and writing to output file
         def process_template(template_file, output_file, replacements):
             if output_file.exists():
                 output_file.unlink()
-            with open(template_file, 'r') as file:
+            with open(template_file, "r") as file:
                 template_contents = file.read()
             for placeholder, value in replacements.items():
                 template_contents = template_contents.replace(placeholder, value)
             output_file.parent.mkdir(parents=True, exist_ok=True)
-            with open(output_file, 'w') as file:
+            with open(output_file, "w") as file:
                 file.write(template_contents)
 
-        # Process inventory template
-        process_template(template_inventory_file, output_inventory_file, {'{{cvp_ip}}': cvp_ip})
-
-        # Process deploy template
-        process_template(template_deploy_file, output_deploy_file, {'{{cvp_ip}}': cvp_ip})
-
         # Process ceos template
-        process_template(template_ceos_file, output_ceos_file, {'{{cvp_username}}': cvp_username, '{{cvp_password}}': cvp_password, '{{cvp_ip}}': cvp_ip})
-
-        # Process dc1_vars template
-        process_template(template_dc1_vars_file, output_dc1_vars_file, {'{{cvp_username}}': cvp_username, '{{cvp_password}}': cvp_password})
-
-    except FileNotFoundError as e:
-        print(f"The file {e.filename} does not exist.")
-    except Exception as e:
-        print(f"An error occurred: {e}")    
-
-def animated_message(stop_event, message="Processing", delay=0.5):
-    def animate():
-        while not stop_event.is_set():
-            for i in range(1, 5):
-                if stop_event.is_set():
-                    break
-                sys.stdout.write(f"\r{message}{'.' * i}    ")
-                sys.stdout.flush()
-                time.sleep(delay)
-        sys.stdout.write(f"\r{message} - Done\n")
-    
-    animation_thread = threading.Thread(target=animate)
-    animation_thread.start()
-    return animation_thread
-
-def deploy_clab(info, cvp_ip, cvp_username, cvp_password):
-    clear_console()
-    cvp_client = CvpClient()
-    cvp_client.connect([cvp_ip], cvp_username, cvp_password, 120, 120)
-    print("----------------------------------------")
-    print("Lab Deployment Information")
-    print("----------------------------------------")
-    print("")
-    
-    # Check if topology is already running
-    if check_topology_running(info.topology_file):
-        user_choice = input("A ContainerLab topology is already running. Do you want to continue and skip deployment? (y/n): ")
-        if user_choice.lower() != 'y':
-            print("Exiting script.")
-            return
-    else:
-        # Deploying ContainerLab topology
-        stop_animation = threading.Event()
-        animation_thread = animated_message(stop_animation, "Deploying ContainerLab topology")
-        try:
-            subprocess_run(info.deploy_command)
-        finally:
-            stop_animation.set()
-            animation_thread.join()
-        logging.info("Done")
-
-    lab_dir = script_dir / "clab-avd"
-    parent_container = cvp_client.api.get_container_by_name("Undefined")
-
-    # Read management IP list from file
-    mgmt_ip_list_file = os.path.join(lab_dir, "topology-data.json")
-    json_data = load_config(mgmt_ip_list_file)
-
-    ip_list = [node["mgmt-ipv4-address"] for node in json_data["nodes"].values() if node.get("kind") == "ceos"]
-
-    cvp_list = [{
-        "device_ip": dev_ip,
-        "parent_name": parent_container["name"],
-        "parent_key": parent_container["key"],
-    } for dev_ip in ip_list]
-
-    # Add devices to CVP inventory
-    stop_animation = threading.Event()
-    animation_thread = animated_message(stop_animation, "Adding devices to CVP inventory")
-    try:
-        cvp_client.api.add_devices_to_inventory(cvp_list)
-        time.sleep(10)  # Simulating a long-running task for demonstration
-    finally:
-        stop_animation.set()
-        animation_thread.join()
-    logging.info("Done")
-
-    # Moving Devices to Lab Container
-    stop_animation = threading.Event()
-    animation_thread = animated_message(stop_animation, "Moving Devices to Lab Container")
-    try:
-        move_devices_to_container(cvp_client, "Tenant", "Tenant", "Undefined")
-        time.sleep(60)
-    finally:
-        stop_animation.set()
-        animation_thread.join()
-    logging.info("Done")
-
-    # Assigning Base Configlets in CVP
-    stop_animation = threading.Event()
-    animation_thread = animated_message(stop_animation, "Assigning Base Configlets in CVP")
-    try:
-        assign_configlets(cvp_client, "Tenant")
-        time.sleep(2)
-    finally:
-        stop_animation.set()
-        animation_thread.join()
-    logging.info("Done")
-    
-    # Run the AVD Build Playbook
-    stop_animation = threading.Event()
-    animation_thread = animated_message(stop_animation, "Running Ansible Build Playbook")
-    try:
-        run_ansible_build()
-    finally:
-        stop_animation.set()
-        animation_thread.join()
-    logging.info("Done")
-    
-    # Run the AVD Deploy Playbook
-    stop_animation = threading.Event()
-    animation_thread = animated_message(stop_animation, "Running Ansible Deploy Playbook")
-    try:
-        run_ansible_deploy()
-    finally:
-        stop_animation.set()
-        animation_thread.join()
-    logging.info("Done")
-    
-    # Generate Topology Tags
-    stop_animation = threading.Event()
-    animation_thread = animated_message(stop_animation, "Generating Topology Tags")
-    try:
-        generate_topology_tags(cvp_client)
-    finally:
-        stop_animation.set()
-        animation_thread.join()
-    logging.info("Done")
-    
-    print("")
-    print("")
-    print("----------------------------------------")
-    print("Lab Deployed Successfully")
-    print("----------------------------------------")
-    input("Press any key to return to the Main Menu")
-    main()
-
-def move_devices_to_container(cvp_client, parent_container_name, new_container_name, source_container_name):
-    parent_container = cvp_client.api.get_container_by_name(parent_container_name)
-    try:
-        cvp_client.api.add_container(new_container_name, parent_container["name"], parent_container["key"])
-    except Exception as e:
-        if "jsonData already exists in jsonDatabase" in str(e):
-            print("Container already exists, continuing...")
-
-    device_list = [{"deviceName": device["fqdn"]} for device in cvp_client.api.get_devices_in_container(source_container_name)]
-    
-    for device in device_list:
-        device_info = cvp_client.api.get_device_by_name(device["deviceName"])
-        new_container = cvp_client.api.get_container_by_name(new_container_name)
-        cvp_client.api.move_device_to_container("python", device_info, new_container)
-
-    execute_pending_tasks(cvp_client)
-
-def assign_configlets(cvp_client, container_name):
-    cvp_devices = cvp_client.api.get_devices_in_container(container_name)
-    device_info = [{"name": device["fqdn"], "macAddress": device["systemMacAddress"]} for device in cvp_devices]
-
-    for info in device_info:
-        device_mac = info["macAddress"]
-        device_short_name = info["name"]
-        dev_mgmt = f"{device_short_name}_management"
-        
-        get_config = cvp_client.api.get_device_configuration(device_mac)
-        cvp_client.api.add_configlet(dev_mgmt, get_config)
-        
-        device_name = cvp_client.api.get_device_by_name(device_short_name)
-        mgmt_configlet = cvp_client.api.get_configlet_by_name(dev_mgmt)
-        mgmt_configlet_key = [{"name": mgmt_configlet["name"], "key": mgmt_configlet["key"]}]
-        
-        cvp_client.api.apply_configlets_to_device("Management Configs", device_name, mgmt_configlet_key)
-        
-        execute_pending_tasks(cvp_client)
-
-def execute_pending_tasks(cvp_client):
-    tasks = cvp_client.api.get_tasks_by_status("Pending")
-    for task in tasks:
-        cvp_client.api.execute_task(task["workOrderId"])
-
-def run_ansible_build():
-    playbook = script_dir / "playbooks/build_dc1.yml"
-    inventory = script_dir / "sites/dc1/inventory.yml"
-    log_folder = script_dir / 'logs'
-    log_file_path = log_folder / "ansible_build_output.log"
-    
-    if not os.path.exists(log_folder):
-        os.makedirs(log_folder)
-    
-    with open(log_file_path, 'w') as log_file:
-        try:
-            subprocess.run(
-                ['ansible-playbook', playbook, '-i', inventory],
-                cwd=script_dir,
-                stdout=log_file,
-                stderr=log_file,  # Redirect stderr to the same log file
-                check=True
-            )
-        except subprocess.CalledProcessError as e:
-            logging.error(f"An error occurred: {e}")
-
-def run_ansible_deploy():
-    playbook = script_dir / "playbooks/deploy_dc1_cvp.yml"
-    inventory = script_dir / "sites/dc1/inventory.yml"
-    log_folder = script_dir / 'logs'
-    log_file_path = log_folder / "ansible_deploy_output.log"
-    
-
-    with open(log_file_path, 'w') as log_file:
-        try:
-            subprocess.run(
-                ['ansible-playbook', playbook, '-i', inventory],
-                cwd=script_dir,
-                stdout=log_file,
-                stderr=log_file,  # Redirect stderr to the same log file
-                check=True
-            )
-        except subprocess.CalledProcessError as e:
-            logging.error(f"An error occurred: {e}")
-            
-def generate_topology_tags(cvp_client):
-    # Constants
-    dc_tag_label = 'topology_hint_datacenter'
-    fabric_tag_label = 'topology_hint_fabric'
-    pod_tag_label = 'topology_hint_pod'
-    rack_tag_label = 'topology_hint_rack'
-    type_tag_label = 'topology_hint_type'
-    dc_tag_value = 'DC1'
-    fabric_tag_value = 'dc1_fabric'
-    pod_tag_value = 'Pod1'
-    leaf_tag_value = 'leaf'
-    spine_tag_value = 'spine'
-    pair1_tag_value = 'LeafPair1'
-    pair2_tag_value = 'LeafPair2'
-    element_type = 'ELEMENT_TYPE_DEVICE'
-
-    # Generate a unique workspace name
-    current_time = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
-    workspace_id = f'avd-clab-tags-{current_time}'
-    display_name = 'AVD Clab Tags'
-    description = 'Workspace for tagging devices'
-
-    # Create workspace
-    cvp_client.api.workspace_config(
-        workspace_id=workspace_id,
-        display_name=display_name,
-        description=description,
-        request='REQUEST_UNSPECIFIED',
-        request_id='1'
-    )
-
-    # Configure common tags
-    common_tags = [
-        (dc_tag_label, dc_tag_value),
-        (fabric_tag_label, fabric_tag_value),
-        (pod_tag_label, pod_tag_value)
-    ]
-
-    for tag_label, tag_value in common_tags:
-        cvp_client.api.tag_config(
-            element_type=element_type,
-            workspace_id=workspace_id,
-            tag_label=tag_label,
-            tag_value=tag_value
+        process_template(
+            self.template_ceos_file,
+            self.output_ceos_file,
+            {"{{dns_server}}": self.dns_server, "{{ntp_server}}": self.ntp_server},
         )
 
-    # Get devices
-    leaf_devices = cvp_client.api.get_devices_in_container('dc1_leafs')
-    spine_devices = cvp_client.api.get_devices_in_container('dc1_spines')
-    devices = leaf_devices + spine_devices
+        # Process inventory template
+        process_template(
+            self.template_inventory_file,
+            self.output_inventory_file,
+            {"{{cvp_group}}": "CVAAS", "{{cvp_host}}": "cvaas"},
+        )
+        cvaas_folder = self.script_dir / "sites" / "dc1" / "group_vars" / "CVAAS"
+        if not os.path.exists(cvaas_folder):
+            os.makedirs(cvaas_folder)
+        cvp_certs = "True" if self.cvp_type == "cvaas" else "False"
 
-    # Retrieve device serial numbers
-    device_details = {
-        's1-leaf1': None,
-        's1-leaf2': None,
-        's1-leaf3': None,
-        's1-leaf4': None,
-        's1-spine1': None,
-        's1-spine2': None
-    }
+        process_template(
+            self.template_cvaas_auth_file,
+            self.output_cvaas_auth_file,
+            {
+                "{{cvp_ip}}": self.cvp_ip,
+                "{{cvp_token}}": self.cvp_token,
+                "{{cvp_certs}}": cvp_certs,
+            },
+        )
 
-    for device in devices:
-        fqdn = device['fqdn']
-        if fqdn in device_details:
-            device_details[fqdn] = device['serialNumber']
+        process_template(
+            self.template_deploy_file,
+            self.output_deploy_file,
+            {
+                "{{cvp_ip}}": self.cvp_ip,
+                "{{cvp_token}}": self.cvp_token,
+                "{{cvp_certs}}": cvp_certs,
+            },
+        )
 
-    # Assign tags to devices
-    for device in devices:
-        device_id = device['serialNumber']
-        for tag_label, tag_value in common_tags:
-            cvp_client.api.tag_assignment_config(
-                element_type=element_type,
-                workspace_id=workspace_id,
-                tag_label=tag_label,
-                tag_value=tag_value,
-                device_id=device_id,
-                interface_id=''
-            )
-        
-        fqdn = device['fqdn']
-        if fqdn in device_details:
-            specific_tags = {
-                's1-leaf1': [(type_tag_label, leaf_tag_value), (rack_tag_label, pair1_tag_value)],
-                's1-leaf2': [(type_tag_label, leaf_tag_value), (rack_tag_label, pair1_tag_value)],
-                's1-leaf3': [(type_tag_label, leaf_tag_value), (rack_tag_label, pair2_tag_value)],
-                's1-leaf4': [(type_tag_label, leaf_tag_value), (rack_tag_label, pair2_tag_value)],
-                's1-spine1': [(type_tag_label, spine_tag_value)],
-                's1-spine2': [(type_tag_label, spine_tag_value)]
-            }
-            for tag_label, tag_value in specific_tags[fqdn]:
-                cvp_client.api.tag_assignment_config(
-                    element_type=element_type,
-                    workspace_id=workspace_id,
-                    tag_label=tag_label,
-                    tag_value=tag_value,
-                    device_id=device_id,
-                    interface_id=''
-                )
+    def deploy_clab(self):
+        self.subprocess_run(f"clab deploy -t {self.topology_file}")
 
-    # Build the workspace
-    cvp_client.api.workspace_config(
-        workspace_id=workspace_id,
-        display_name=display_name,
-        description=description,
-        request='REQUEST_START_BUILD',
-        request_id='2'
-    )
+    def destroy_clab(self):
+        self.subprocess_run(f"clab destroy -t {self.topology_file} --cleanup")
 
-    time.sleep(5)  # Wait for build to complete
+    def create_commands(self):
+        self.commands = [
+            "enable",
+            "copy terminal: file:/tmp/cv-onboarding-token",
+            f"{self.device_token}",
+            "\x04",
+            "configure",
+            "daemon TerminAttr",
+            f"exec /usr/bin/TerminAttr "
+            + (
+                f"-smashexcludes=ale,flexCounter,hardware,kni,pulse,strata -cvaddr={self.api_server} -cvauth=token-secure,/tmp/cv-onboarding-token -cvvrf=MGMT -taillogs"
+                if self.is_cvaas
+                else f"-ingestgrpcurl={self.cvp_ip}:9910 -ingestauth=token,/tmp/cv-onboarding-token -smashexcludes=ale,flexCounter,hardware,kni,pulse,strata -ingestexclude=/Sysdb/cell/1/agent,/Sysdb/cell/2/agent -ingestvrf=MGMT -taillogs"
+            ),
+            "shutdown",
+            "no shutdown",
+        ]
 
-    # Submit the workspace
-    cvp_client.api.workspace_config(
-        workspace_id=workspace_id,
-        display_name=display_name,
-        description=description,
-        request='REQUEST_SUBMIT',
-        request_id='3'
-    )
+    def cvp_connection(self):
+        self.cvp_client.connect(
+            nodes=[self.cvp_ip],
+            username="",
+            password="",
+            is_cvaas=self.is_cvaas,
+            api_token=self.cvp_token,
+        )
 
-def decommission_devices(cvp_client):
-    child_containers = ['dc1_spines', 'dc1_leafs']
-    
-    for child_container in child_containers:
+    def cvp_register_devices(self):
         try:
-            device_list = cvp_client.api.get_devices_in_container(child_container)
-            logging.info(f"Devices in container '{child_container}': {device_list}")
-            for device in device_list:
-                cvp_device = device['serialNumber']
-                cvp_request = str(uuid.uuid4())
-                try:
-                    cvp_client.api.device_decommissioning(cvp_device, cvp_request)
-                    logging.info(f"Decommissioned device {cvp_device} from container {child_container}.")
-                except Exception as e:
-                    logging.error(f"Failed to decommission device {cvp_device} from container {child_container}: {e}")
+            with open(self.topology_file, "r") as file:
+                lines = yaml.safe_load(file)
         except Exception as e:
-            logging.error(f"Failed to retrieve devices from container '{child_container}': {e}")
-            
+            self.ssh_logger.error(f"Failed to read or parse topology file: {e}")
+            self.log_location = "SSH Log file"
+            self.error_message()
+            return
 
-def delete_container(cvp_client, container_name, parent_container_name, parent_container_key):
-    try:
-        container = cvp_client.api.get_container_by_name(container_name)
-        if container:
-            cvp_client.api.delete_container(container["name"], container["key"], parent_container_name, parent_container_key)
-            logging.info(f"Deleted container: {container_name}")
-        else:
-            logging.warning(f"Container '{container_name}' not found.")
-    except Exception as e:
-        logging.error(f"Failed to delete container '{container_name}': {e}")
+        self.device_addr = []
+        if "topology" in lines and "nodes" in lines["topology"]:
+            for node_name, node_info in lines["topology"]["nodes"].items():
+                if node_info.get("kind") == "ceos":
+                    self.device_addr.append(node_info.get("mgmt-ipv4"))
 
-def delete_containers(cvp_client, parent_container_name, child_containers):
-    parent_container = cvp_client.api.get_container_by_name(parent_container_name)
-    if not parent_container:
-        logging.warning(f"Parent container '{parent_container_name}' not found.")
-        return
+        client = paramiko.SSHClient()
+        client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
 
-    for container_name in child_containers:
-        delete_container(cvp_client, container_name, parent_container["name"], parent_container["key"])
+        for ip in self.device_addr:
+            try:
+                self.ssh_logger.info(f"Connecting to device at {ip}")
+                client.connect(ip, port=22, username="arista", password="arista")
+            except Exception as e:
+                self.ssh_logger.error(f"Failed to connect to device at {ip}: {e}")
+                continue
 
-    delete_container(cvp_client, parent_container_name, 'Tenant', 'root')
+            try:
+                ssh_session = client.invoke_shell()
+                time.sleep(1)
+                for command in self.commands:
+                    ssh_session.send(command + "\n")
+                    time.sleep(1)
+                ssh_session.send("\x04")
+                time.sleep(1)
+                self.ssh_logger.info(f"Completed commands on device {ip}")
+            except Exception as e:
+                self.ssh_logger.error(f"Error during SSH session on device {ip}: {e}")
+                self.log_location = "SSH Log file"
+                self.error_message()
+        time.sleep(60)
 
-def delete_configlets(cvp_client, prefixes):
-    try:
-        all_configlets = cvp_client.api.get_configlets()
-        for configlet in all_configlets['data']:
-            if any(configlet['name'].startswith(prefix) for prefix in prefixes):
+    def cvp_move_devices(self):
+        try:
+            self.cvp_logger.info("Starting device move process.")
+            self.cvp_connection()
+
+            device_list = [
+                {"deviceName": device["fqdn"]}
+                for device in self.cvp_client.api.get_devices_in_container("Undefined")
+            ]
+            self.cvp_logger.info(
+                f"Found devices in 'Undefined' container: {device_list}"
+            )
+
+            for device in device_list:
                 try:
-                    cvp_client.api.delete_configlet(configlet['name'], configlet['key'])
-                    logging.info(f"Deleted configlet: {configlet['name']}")
+                    device_info = self.cvp_client.api.get_device_by_name(
+                        device["deviceName"]
+                    )
+                    new_container = self.cvp_client.api.get_container_by_name("Tenant")
+                    self.cvp_client.api.move_device_to_container(
+                        "python", device_info, new_container
+                    )
+                    self.cvp_logger.info(
+                        f"Moved device {device['deviceName']} to 'Tenant' container."
+                    )
                 except Exception as e:
-                    logging.error(f"Failed to delete configlet '{configlet['name']}': {e}")
-    except Exception as e:
-        logging.error(f"Failed to retrieve configlets: {e}")
-        
-def delete_folders():
-    folders_to_delete = ['logs','sites/dc1/documentation','sites/dc1/intended']
-    for folder_path in folders_to_delete:
-        if os.path.exists(folder_path):
-            for root, dirs, files in os.walk(folder_path, topdown=False):
-                for name in files:
-                    os.remove(os.path.join(root, name))
-                for name in dirs:
-                    os.rmdir(os.path.join(root, name))
-            os.rmdir(folder_path)
-    
+                    self.cvp_logger.error(
+                        f"Error moving device {device['deviceName']}: {e}"
+                    )
 
-def cleanup_clab(info, cvp_ip, cvp_username, cvp_password):
-    clear_console()
-    cvp_client = CvpClient()
-    cvp_client.connect([cvp_ip], cvp_username, cvp_password, 120, 120)
-    print("----------------------------------------")
-    print("Lab Cleanup Information")
-    print("----------------------------------------")
-    print("")
-    
-    # Decommission devices from CVP
-    stop_animation = threading.Event()
-    animation_thread = animated_message(stop_animation, "Decommissioning devices from CVP")
-    try:
-        decommission_devices(cvp_client)
-        time.sleep(10)  # Simulating a long-running task for demonstration
-    finally:
-        stop_animation.set()
-        animation_thread.join()
-    logging.info("Done")
-    
-    # Wait for devices to be decommissioned before deleting the containers
-    child_containers = ['dc1_spines', 'dc1_leafs']
-    while True:
-        all_decommissioned = True
-        for child_container in child_containers:
-            devices = cvp_client.api.get_devices_in_container(child_container)
-            if devices:
-                all_decommissioned = False
-                break
-        if all_decommissioned:
-            break
-        time.sleep(20)
-    
-    # Delete containers from CVP
-    stop_animation = threading.Event()
-    animation_thread = animated_message(stop_animation, "Deleting Containers from CVP")
-    try:
-        delete_containers(cvp_client, "dc1_fabric", ["dc1_spines", "dc1_leafs"])
-        time.sleep(10)  # Simulating a long-running task for demonstration
-    finally:
-        stop_animation.set()
-        animation_thread.join()
-    logging.info("Done")
-    
-    # Delete configlets from CVP
-    stop_animation = threading.Event()
-    animation_thread = animated_message(stop_animation, "Deleting Configlets from CVP")
-    try:
-        delete_configlets(cvp_client, ['s1', 'AVD-'])
-        time.sleep(10)  # Simulating a long-running task for demonstration
-    finally:
-        stop_animation.set()
-        animation_thread.join()
-    logging.info("Done")
-    
-    # Destroying ContainerLab topology
-    stop_animation = threading.Event()
-    animation_thread = animated_message(stop_animation, "Destroying Container Lab")
-    try:
-        subprocess_run(info.destroy_command)
-    finally:
-        stop_animation.set()
-        animation_thread.join()
-    logging.info("Done")
-    
-    # Deleting Unused Folders
-    stop_animation = threading.Event()
-    animation_thread = animated_message(stop_animation, "Cleaning Up Folders")
-    try:
-        delete_folders()
-    finally:
-        stop_animation.set()
-        animation_thread.join()
-    logging.info("Done")
-    
-    print("")
-    print("")
-    print("----------------------------------------")
-    print("Lab Destroyed Successfully")
-    print("----------------------------------------")
-    input("Press any key to return to the Main Menu")
-    main()
+            self.cvp_execute_pending_tasks()
+            self.cvp_logger.info("Executed pending tasks.")
 
+            time.sleep(10)
+            self.cvp_logger.info("Device move process completed.")
+        except Exception as e:
+            self.cvp_logger.error(f"Error in cvp_move_devices: {e}")
+            self.log_location = "CVP Log file"
+            self.error_message()
 
-def preview_log(file_path):
-    clear_console()
-    try:
-        with open(file_path, 'r') as file:
-            content = file.read()
-            print(content)
-    except FileNotFoundError:
-        print(f"File not found: {file_path}")
-    except IOError:
-        print(f"Error reading file: {file_path}")
-    
-    input("Press any key to return to the Main Menu")
-    main()
+    def cvp_create_configlets(self):
+        try:
+            self.cvp_logger.info("Starting configlet creation process.")
+            self.cvp_connection()
 
-def terminate_script():
-    clear_console()
-    sys.exit()
-            
-def main_menu():
-    clear_console()
-    print("----------------------------------------")
-    print("AVD CLAB Helper")
-    print("----------------------------------------")
-    print("")
-    print("1. Deploy Lab")
-    print("2. Cleanup Lab")
-    print("3. Show Ansible Build Log")
-    print("4. Show Ansible Deploy Log")
-    print("5. Change CVP Credentials")
-    print("6. Quit\n")
+            device_list = self.cvp_client.api.get_devices_in_container("Tenant")
+            device_info = [
+                {"name": device["fqdn"], "macAddress": device["systemMacAddress"]}
+                for device in device_list
+            ]
+            self.cvp_logger.info(f"Found devices in 'Tenant' container: {device_info}")
 
-def main():
-    clear_console()
-    if os.getuid() == 0:
-        topology_file = script_dir / "topology.yaml"
-        deploy_command = f"clab deploy -t {topology_file}"
-        destroy_command = f"clab destroy -t {topology_file} --cleanup"
-        build_log = script_dir / "logs/ansible_build_output.log"
-        deploy_log = script_dir / "logs/ansible_deploy_output.log"
-        info = Info(deploy_command, topology_file, destroy_command, build_log, deploy_log)
+            for info in device_info:
+                try:
+                    device_mac = info["macAddress"]
+                    device_short_name = info["name"]
+                    dev_mgmt = f"{device_short_name}_management"
 
-        # Read CVP credentials
-        cvp_ip, cvp_username, cvp_password = read_cvp_credentials()
-        create_inventory(cvp_ip, cvp_username, cvp_password)
+                    get_config = self.cvp_client.api.get_device_configuration(
+                        device_mac
+                    )
+                    self.cvp_client.api.add_configlet(dev_mgmt, get_config)
+                    self.cvp_logger.info(
+                        f"Created configlet {dev_mgmt} for device {device_short_name}."
+                    )
 
-        # Validate credentials
-        if cvp_username is None or cvp_password is None or cvp_ip is None:
-            logging.error("Invalid or missing CVP credentials.")
-            terminate_script()
-            
-        # Check for ceosimage and validate version
-        check_ceosimage()
+                    device_name = self.cvp_client.api.get_device_by_name(
+                        device_short_name
+                    )
+                    mgmt_configlet = self.cvp_client.api.get_configlet_by_name(dev_mgmt)
+                    mgmt_configlet_key = [
+                        {"name": mgmt_configlet["name"], "key": mgmt_configlet["key"]}
+                    ]
 
-        # Display main menu and handle user choice
-        while True:
-            main_menu()
-            choice = input("Enter your choice: ")
-            if choice == "1":
-                deploy_clab(info, cvp_ip, cvp_username, cvp_password)
-            elif choice == "2":
-                cleanup_clab(info, cvp_ip, cvp_username, cvp_password)
-            elif choice == "3":
-                preview_log(info.build_log)
-            elif choice == "4":
-                preview_log(info.deploy_log)
-            elif choice == "5":
-                get_cvp_credentials()  # Option to change CVP credentials
-                # Restart the script to apply the changes
-                python = sys.executable
-                os.execl(python, python, *sys.argv)        
-            elif choice == "6":
-                terminate_script()
+                    self.cvp_client.api.apply_configlets_to_device(
+                        "Management Configs", device_name, mgmt_configlet_key
+                    )
+                    self.cvp_logger.info(
+                        f"Applied configlet {dev_mgmt} to device {device_short_name}."
+                    )
+                except Exception as e:
+                    self.cvp_logger.error(
+                        f"Error creating or applying configlet for device {info['name']}: {e}"
+                    )
+                    self.log_location = "CVP Log file"
+                    self.error_message()
+
+            self.cvp_execute_pending_tasks()
+            self.cvp_logger.info("Executed pending tasks.")
+
+            time.sleep(10)
+            self.cvp_logger.info("Configlet creation process completed.")
+        except Exception as e:
+            self.cvp_logger.error(f"Error in cvp_create_configlets: {e}")
+            self.log_location = "CVP Log file"
+            self.error_message()
+
+    def cvp_execute_pending_tasks(self):
+        tasks = self.cvp_client.api.get_tasks_by_status("Pending")
+        for task in tasks:
+            self.cvp_client.api.execute_task(task["workOrderId"])
+
+    def ansible_build(self):
+        playbook = self.script_dir / "playbooks/build_dc1.yml"
+
+        try:
+            with open(self.ansible_build_log, "w") as log_file:
+                subprocess.run(
+                    ["ansible-playbook", playbook, "-i", self.inventory],
+                    cwd=self.script_dir,
+                    stdout=log_file,
+                    stderr=log_file,
+                    check=True,
+                )
+        except Exception as e:
+            self.ansible_error_logger.error(
+                f"Error running Ansible Build playbook: {e}"
+            )
+
+    def ansible_deploy(self):
+        playbook = self.script_dir / "playbooks/cv_deploy.yml"
+        try:
+            with open(self.ansible_deploy_log, "w") as log_file:
+                subprocess.run(
+                    ["ansible-playbook", playbook, "-i", self.inventory],
+                    cwd=self.script_dir,
+                    stdout=log_file,
+                    stderr=log_file,
+                    check=True,
+                )
+        except Exception as e:
+            self.ansible_error_logger.error(
+                f"Error running Ansible Deploy playbook: {e}"
+            )
+
+    def cvp_decommission_devices(self):
+        cvp_container = "Tenant"
+        prefix = "s1-"
+        self.cvp_connection()
+
+        try:
+            self.cvp_logger.info(
+                f"Starting decommission process for devices in '{cvp_container}' container."
+            )
+
+            device_list = self.cvp_client.api.get_devices_in_container(cvp_container)
+            self.cvp_logger.info(
+                f"Found devices in '{cvp_container}' container: {device_list}"
+            )
+
+            for device in device_list:
+                cvp_device = device["serialNumber"]
+                cvp_request = str(uuid.uuid4())
+                device_name = device.get("fqdn", "Unknown device")
+
+                try:
+                    self.cvp_client.api.device_decommissioning(cvp_device, cvp_request)
+                    self.cvp_logger.info(
+                        f"Decommissioned device {device_name} with serial number {cvp_device}."
+                    )
+                except Exception as e:
+                    self.cvp_logger.error(
+                        f"Error decommissioning device {device_name} with serial number {cvp_device}: {e}"
+                    )
+                    self.log_location = "CVP Log File"
+                    self.error_message()
+
+            # Wait for all devices to be fully decommissioned
+            self.cvp_logger.info("Starting configlet deletion process.")
+            while True:
+                devices = self.cvp_client.api.get_devices_in_container(cvp_container)
+                self.cvp_logger.info(f"Retrieved devices: {devices}")
+
+                s1_devices = [
+                    device
+                    for device in devices
+                    if device["hostname"].startswith(prefix)
+                ]
+
+                if not s1_devices:
+                    break
+
+                self.cvp_logger.info(
+                    f"Devices with prefix '{prefix}' still exist: {s1_devices}"
+                )
+                self.cvp_logger.info("Waiting for 30 seconds before checking again.")
+                time.sleep(30)
+
+            self.cvp_logger.info(
+                "No devices with prefix 's1-' found, proceeding with configlet deletion."
+            )
+
+            self.cvp_logger.info("Decommission process completed.")
+        except Exception as e:
+            self.cvp_logger.error(f"Error in cvp_decommission_devices: {e}")
+            self.log_location = "CVP Log file"
+            self.error_message()
+
+    def cvp_delete_configlets(self):
+        prefix = "s1-"
+        self.cvp_connection()
+        try:
+            all_configlets = self.cvp_client.api.get_configlets()
+            self.cvp_logger.info(f"Retrieved all configlets: {all_configlets['data']}")
+
+            for configlet in all_configlets["data"]:
+                if configlet["name"].startswith(prefix):
+                    try:
+                        self.cvp_client.api.delete_configlet(
+                            configlet["name"], configlet["key"]
+                        )
+                        self.cvp_logger.info(f"Deleted configlet: {configlet['name']}")
+                    except Exception as e:
+                        self.cvp_logger.error(
+                            f"Failed to delete configlet '{configlet['name']}': {e}"
+                        )
+                        self.log_location = "CVP Log file"
+                        self.error_message()
+
+            self.cvp_logger.info("Configlet deletion process completed.")
+        except Exception as e:
+            self.cvp_logger.error(f"Failed to retrieve configlets: {e}")
+            self.log_location = "CVP Log file"
+            self.error_message()
+
+    def show_logs(self, log_file, log_name):
+        self.clear_console()
+        try:
+            with open(log_file, "r") as file:
+                content = file.read()
+                print(content)
+        except FileNotFoundError:
+            print(f"{log_name} file not found: {log_file}")
+        except IOError:
+            print(f"Error reading {log_name} file: {log_file}")
+        input("Press enter to continue...")
+        self.show_logs_menu()
+
+    def clear_logs(self):
+        if self.clab_log.exists():
+            self.clab_log.unlink()
+        if self.ssh_log.exists():
+            self.ssh_log.unlink()
+        if self.cvp_log.exists():
+            self.cvp_log.unlink()
+        if self.ansible_error_log.exists():
+            self.ansible_error_log.unlink()
+        if self.ansible_build_log.exists():
+            self.ansible_build_log.unlink()
+        if self.ansible_deploy_log.exists():
+            self.ansible_deploy_log.unlink()
+        self.clear_console()
+        print(32 * "*")
+        print("!  All Logs have been cleared  !")
+        print(32 * "*")
+        print("")
+        input("Please press any key to return to the Main Menu")
+        self.main()
+
+    def list_docker_images(self):
+        # Create a Docker client
+        client = docker.from_env()
+
+        # Get the list of images
+        images = client.images.list()
+
+        # Print the list of images
+        self.clear_console()
+        print("Current Docker Images:")
+        for image in images:
+            tags = image.tags
+            if tags:
+                for tag in tags:
+                    print(f"- {tag}")
             else:
-                logging.error("Invalid choice. Please try again.")
+                print(f"- <none>: {image.id}")
+        input("Please press any key to return to the Main Menu")
+        self.main()
 
-    else:
-        logging.error("Container lab needs superuser privileges to run. Please restart with 'sudo' or as root.")
+    def factory_reset(self):
+        self.clear_console()
+        print(68 * "*")
+        print(f"! WARNING: THIS WILL RESET THE SCRIPT BACK TO DEFAULT !")
+        print(68 * "*")
+        print(f"The following Files/Folders will be deleted:")
+        print(f"- {self.doc_dir}")
+        print(f"- {self.intend_dir}")
+        print(f"- {self.cvaas_dir}")
+        print(f"- {self.output_inventory_file}")
+        print(f"- {self.token_file}")
+        print(f"- {self.cvp_file}")
+        print(f"- {self.network_file}")
+        print(f"- {self.output_deploy_file}")
+        print(f"- {self.output_ceos_file}")
+        print(68 * "*")
+        print("")
+        delete = input(
+            "Please confirm that you would like to delete these files/folders [y/n]: "
+        )
+        if delete == "y":
+            if self.doc_dir.exists():
+                shutil.rmtree(self.doc_dir)
+            if self.intend_dir.exists():
+                shutil.rmtree(self.intend_dir)
+            if self.cvaas_dir.exists():
+                shutil.rmtree(self.cvaas_dir)
+            if self.output_inventory_file.exists():
+                self.output_inventory_file.unlink()
+            if self.token_file.exists():
+                self.token_file.unlink()
+            if self.cvp_file.exists():
+                self.cvp_file.unlink()
+            if self.network_file.exists():
+                self.network_file.unlink()
+            if self.output_deploy_file.exists():
+                self.output_deploy_file.unlink()
+            if self.output_ceos_file.exists():
+                self.output_ceos_file.unlink()
+            self.clear_console()
+            print("Factory Reset completed.")
+            input("Please press any key to return to the Main Menu")
+            sys.exit(0)
+        else:
+            self.main()
+
+    def show_logs_menu(self):
+        self.clear_console()
+        print("----------------------------------------")
+        print("Show Logs")
+        print("----------------------------------------")
+        print("1. Container Lab Log")
+        print("2. SSH Connectivity Logs")
+        print("3. Show CVP Log")
+        print("4. Show Ansible Error Log")
+        print("5. Show Ansible Build Log")
+        print("6. Show Ansible Deploy Log")
+        print("8. Clear Logs")
+        print("9. Back\n")
+        menu_choice = input("Enter your choice: ")
+        if menu_choice == "1":
+            self.show_logs(self.clab_log, "Container Lab")
+        elif menu_choice == "2":
+            self.show_logs(self.ssh_log, "SSH Connectivity")
+        elif menu_choice == "3":
+            self.show_logs(self.cvp_log, "CVP")
+        elif menu_choice == "4":
+            self.show_logs(self.ansible_error_log, "Ansible Error")
+        elif menu_choice == "5":
+            self.show_logs(self.ansible_build_log, "Ansible Build")
+        elif menu_choice == "6":
+            self.show_logs(self.ansible_deploy_log, "Ansible Deploy")
+        elif menu_choice == "8":
+            self.clear_logs()
+        elif menu_choice == "9":
+            self.main()
+        else:
+            print("Invalid choice, please try again.")
+            self.show_logs_menu()
+
+    def animated_message(self, stop_event, message="Processing", delay=0.5):
+        def animate():
+            while not stop_event.is_set():
+                for i in range(1, 5):
+                    if stop_event.is_set():
+                        break
+                    sys.stdout.write(f"\r{message}{'.' * i}    ")
+                    sys.stdout.flush()
+                    time.sleep(delay)
+            sys.stdout.write(f"\r{message} - Done\n")
+
+        animation_thread = threading.Thread(target=animate)
+        animation_thread.start()
+        return animation_thread
+
+    def run_task_with_animation(self, task_function, message):
+        local_stop_event = threading.Event()
+        animation_thread = self.animated_message(local_stop_event, message)
+        self.animation_threads.append(animation_thread)
+        try:
+            task_function()
+        except Exception as e:
+            local_stop_event.set()
+            animation_thread.join()
+            self.error_message(str(e))
+        else:
+            local_stop_event.set()
+            animation_thread.join()
+
+    def main_menu(self):
+        self.clear_console()
+        print("----------------------------------------")
+        print("AVD CLAB Helper")
+        print("----------------------------------------")
+        print("1. Deploy Lab")
+        print("2. Cleanup Lab")
+        print("3. Show Logs")
+        print("4. Show Docker Images")
+        print("5. Reset All Files (Including Tokens)")
+        print("6. Exit\n")
+
+        while True:
+            menu_choice = input("Enter your choice: ")
+            if menu_choice in ["1", "2", "3", "4", "5", "6"]:
+                return menu_choice
+            else:
+                print("Invalid choice. Please try again.")
+
+    @superuser_required
+    def main(self):
+        self.check_ceosimage()
+        self.check_files()
+        self.read_cvp_credentials()
+        self.read_network_info()
+        self.create_inventory()
+        choice = self.main_menu()
+        if choice == "1":
+            self.clear_console()
+            print("========================================")
+            print("Lab Deployment Information")
+            print("========================================")
+            self.run_task_with_animation(self.deploy_clab, "Deploying AVD CLAB")
+            self.create_commands
+            self.run_task_with_animation(
+                self.cvp_register_devices, "Registering Devices with CVP"
+            )
+            self.run_task_with_animation(
+                self.cvp_move_devices, "Moving Device Containers"
+            )
+            self.run_task_with_animation(
+                self.cvp_create_configlets, "Creating Configlets"
+            )
+            self.run_task_with_animation(
+                self.ansible_build, "Building L3Ls Configurations"
+            )
+            self.run_task_with_animation(self.ansible_deploy, "Deploying L3LS")
+
+            print("\nDeployment Complete!")
+            input("Press Enter to return to the Main Menu")
+            self.main()
+        elif choice == "2":
+            self.clear_console()
+            print("========================================")
+            print("Lab Cleanup Information")
+            print("========================================")
+            self.run_task_with_animation(self.destroy_clab, "Destroying AVD CLAB")
+            self.run_task_with_animation(
+                self.cvp_decommission_devices, "Decommissioning Devices from CVP"
+            )
+            self.run_task_with_animation(
+                self.cvp_delete_configlets, "Deleting Configlets from CVP"
+            )
+
+            print("\nCleanup Complete!")
+            input("Press Enter to return to the Main Menu")
+            self.main()
+        elif choice == "3":
+            self.show_logs_menu()
+        elif choice == "4":
+            self.list_docker_images()
+        elif choice == "5":
+            self.factory_reset()
+        elif choice == "6":
+            self.clear_console()
+            sys.exit(0)
+
 
 if __name__ == "__main__":
-    main()
+    helper = ClabHelper()
+    helper.main()

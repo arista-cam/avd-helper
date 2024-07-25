@@ -42,8 +42,10 @@ spine:
   nodes:
     - name: s1-spine1
       id: 10
+      mgmt_ip: 172.16.100.2/24
     - name: s1-spine2
       id: 12
+      mgmt_ip: 172.16.100.3/24
 
 ##################################################
 # DC1 Leaf Pairs                                 #
@@ -118,9 +120,11 @@ l3leaf:
       nodes:
         - name: s1-leaf1
           id: 14
+          mgmt_ip: 172.16.100.4/24
           uplink_switch_interfaces: [Ethernet2, Ethernet2]
         - name: s1-leaf2
           id: 16
+          mgmt_ip: 172.16.100.5/24
           uplink_switch_interfaces: [Ethernet3, Ethernet3]
 
     ####################################################
@@ -134,9 +138,11 @@ l3leaf:
       nodes:
         - name: s1-leaf3
           id: 15
+          mgmt_ip: 172.16.100.6/24
           uplink_switch_interfaces: [Ethernet4, Ethernet4]
         - name: s1-leaf4
           id: 17
+          mgmt_ip: 172.16.100.7/24
           uplink_switch_interfaces: [Ethernet5, Ethernet5]
 
 ####################################################
