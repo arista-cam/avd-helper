@@ -1038,7 +1038,7 @@ class ClabHelper:
             print("Lab Deployment Information")
             print("========================================")
             self.run_task_with_animation(self.deploy_clab, "Deploying AVD CLAB")
-            self.create_commands
+            self.create_commands()
             self.run_task_with_animation(
                 self.cvp_register_devices, "Registering Devices with CVP"
             )
@@ -1049,7 +1049,7 @@ class ClabHelper:
                 self.cvp_create_configlets, "Creating Configlets"
             )
             self.run_task_with_animation(
-                self.ansible_build, "Building L3Ls Configurations"
+                self.ansible_build, "Building L3LS Configurations"
             )
             self.run_task_with_animation(self.ansible_deploy, "Deploying L3LS")
 
