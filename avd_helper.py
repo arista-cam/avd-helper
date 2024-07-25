@@ -12,6 +12,8 @@ import docker
 import re
 import shutil
 import threading
+import webbrowser
+import socket
 from pathlib import Path
 from cvprac.cvp_client import CvpClient
 
@@ -42,6 +44,8 @@ class ClabHelper:
         )
         self.template_deploy_file = self.script_dir / "templates" / "cv_deploy.tpl"
         self.output_deploy_file = self.script_dir / "playbooks" / "cv_deploy.yml"
+        self.template_httpd_file = self.script_dir / "templates" / "httpd.tpl"
+        self.output_httpd_file = self.script_dir / "httpd.conf"
         self.doc_dir = self.script_dir / "sites" / "dc1" / "documentation"
         self.intend_dir = self.script_dir / "sites" / "dc1" / "intended"
         self.cvaas_dir = self.script_dir / "sites" / "dc1" / "group_vars" / "CVAAS"
@@ -542,6 +546,8 @@ class ClabHelper:
             },
         )
 
+        shutil.copy(self.template_httpd_file, self.output_httpd_file)
+
     def deploy_clab(self):
         self.subprocess_run(f"clab deploy -t {self.topology_file}")
 
@@ -752,6 +758,55 @@ class ClabHelper:
                 f"Error running Ansible Deploy playbook: {e}"
             )
 
+    def setup_apache_container(self):
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect((self.cvp_ip, 80))
+        host_ip = s.getsockname()[0]
+        s.close()
+
+        container_name = "avd_apache_server"
+        client = docker.from_env()
+
+        Path(self.doc_dir).mkdir(parents=True, exist_ok=True)
+
+        existing_containers = client.containers.list(
+            all=True, filters={"name": container_name}
+        )
+        for container in existing_containers:
+            container.stop()
+            container.remove()
+
+        try:
+            container = client.containers.run(
+                "httpd:latest",
+                name=container_name,
+                volumes={
+                    os.path.abspath(self.doc_dir): {
+                        "bind": "/usr/local/apache2/htdocs/",
+                        "mode": "rw",
+                    },
+                    os.path.abspath(self.output_httpd_file): {
+                        "bind": "/usr/local/apache2/conf/httpd.conf",
+                        "mode": "ro",
+                    },
+                },
+                ports={"80/tcp": 8080},
+                detach=True,
+            )
+            self.clear_console()
+            print("**************************************************")
+            print("\033[1mAutomatically Generated Documentation\033[0m")
+            print("**************************************************")
+            print(
+                f"\nTo view the automatically generated fabric and device documentation, navigate to: \n\033[4mhttp://{host_ip}:8080\033[0m"
+            )
+            print("Hint: You can use CTRL + Click to open the link in a new window\n")
+            input("Please press any key to return to the Main Menu")
+            self.main()
+        except Exception as e:
+            print(f"Error: {e}")
+            return
+
     def cvp_decommission_devices(self):
         cvp_container = "Tenant"
         prefix = "s1-"
@@ -841,6 +896,21 @@ class ClabHelper:
             self.cvp_logger.error(f"Failed to retrieve configlets: {e}")
             self.log_location = "CVP Log file"
             self.error_message()
+
+    def cleanup_docker(self):
+        container_name = "avd_apache_server"
+        client = docker.from_env()
+        existing_containers = client.containers.list(
+            all=True, filters={"name": container_name}
+        )
+        for container in existing_containers:
+            container.stop()
+            container.remove()
+
+        if self.output_httpd_file.exists():
+            self.output_httpd_file.unlink()
+
+        time.sleep(3)
 
     def show_logs(self, log_file, log_name):
         self.clear_console()
@@ -938,7 +1008,7 @@ class ClabHelper:
             self.clear_console()
             print("Factory Reset completed.")
             input("Please press any key to return to the Main Menu")
-            sys.exit(0)
+            self.main()
         else:
             self.main()
 
@@ -1012,14 +1082,15 @@ class ClabHelper:
         print("----------------------------------------")
         print("1. Deploy Lab")
         print("2. Cleanup Lab")
-        print("3. Show Logs")
-        print("4. Show Docker Images")
-        print("5. Reset All Files (Including Tokens)")
-        print("6. Exit\n")
+        print("3. Open Topology Documentation")
+        print("4. Show Logs")
+        print("5. Show Docker Images")
+        print("6. Reset All Files (Including Tokens)")
+        print("7. Exit\n")
 
         while True:
             menu_choice = input("Enter your choice: ")
-            if menu_choice in ["1", "2", "3", "4", "5", "6"]:
+            if menu_choice in ["1", "2", "3", "4", "5", "6", "7"]:
                 return menu_choice
             else:
                 print("Invalid choice. Please try again.")
@@ -1055,6 +1126,7 @@ class ClabHelper:
 
             print("\nDeployment Complete!")
             input("Press Enter to return to the Main Menu")
+
             self.main()
         elif choice == "2":
             self.clear_console()
@@ -1068,17 +1140,22 @@ class ClabHelper:
             self.run_task_with_animation(
                 self.cvp_delete_configlets, "Deleting Configlets from CVP"
             )
+            self.run_task_with_animation(
+                self.cleanup_docker, "Removing Apache Docker Container"
+            )
 
             print("\nCleanup Complete!")
             input("Press Enter to return to the Main Menu")
             self.main()
         elif choice == "3":
-            self.show_logs_menu()
+            self.setup_apache_container()
         elif choice == "4":
-            self.list_docker_images()
+            self.show_logs_menu()
         elif choice == "5":
-            self.factory_reset()
+            self.list_docker_images()
         elif choice == "6":
+            self.factory_reset()
+        elif choice == "7":
             self.clear_console()
             sys.exit(0)
 
