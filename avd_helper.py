@@ -12,7 +12,6 @@ import docker
 import re
 import shutil
 import threading
-import webbrowser
 import socket
 from pathlib import Path
 from cvprac.cvp_client import CvpClient
@@ -947,13 +946,8 @@ class ClabHelper:
         self.main()
 
     def list_docker_images(self):
-        # Create a Docker client
         client = docker.from_env()
-
-        # Get the list of images
         images = client.images.list()
-
-        # Print the list of images
         self.clear_console()
         print("Current Docker Images:")
         for image in images:
