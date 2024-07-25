@@ -96,6 +96,9 @@ class ClabHelper:
 
     def setup_logger(self, name, log_file, level=logging.INFO):
 
+        if not os.path.exists(self.log_folder):
+            os.makedirs(self.log_folder)
+
         formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
         handler = logging.FileHandler(log_file)
         handler.setFormatter(formatter)
@@ -305,9 +308,6 @@ class ClabHelper:
         ):
             self.get_cvp_credentials()
             self.get_network_info()
-
-        if not os.path.exists(self.log_folder):
-            os.makedirs(self.log_folder)
 
     def read_cvp_credentials(self):
         with open(self.cvp_file, "r") as file:
