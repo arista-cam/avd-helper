@@ -1,5 +1,17 @@
 #!/bin/bash
 
+# Function to check if Docker is installed
+check_docker_installed() {
+    if command -v docker &> /dev/null
+    then
+        echo "Docker is already installed. Version: $(docker --version)"
+        exit 0
+    fi
+}
+
+# Check if Docker is already installed
+check_docker_installed
+
 # Update the package index
 sudo apt-get update
 
