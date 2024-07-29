@@ -56,7 +56,7 @@ check_ansible_installed() {
 }
 # Function to check if Ansible AVD collection is installed
 check_avd_installed() {
-    if ansible-galaxy collection list | grep -q 'arista.avd'; then
+    if sudo ansible-galaxy collection list | grep 'arista.avd'; then
         echo "Arista AVD Collection is already installed."
         return 0
     else
@@ -140,7 +140,7 @@ if check_avd_installed; then
     echo "Skipping Arista AVD Collection installation."
 else
     # Install Arista AVD Collection
-    ansible-galaxy collection install arista.avd
+    sudo ansible-galaxy collection install arista.avd
 fi
 
 # Install dependencies from requirements.txt
