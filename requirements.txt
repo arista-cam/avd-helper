@@ -1,3 +1,4 @@
 cvprac
 requests
 docker
+paramiko
