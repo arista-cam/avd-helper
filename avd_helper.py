@@ -24,6 +24,7 @@ def check_software():
             "CONTAINERLAB_REQUIRED",
             r"version: (\S+)",
         ),
+        ("python3", "python3 --version", "PYTHON_REQUIRED", r"Python (\S+)"),
         ("pip3", "pip3 --version", "PIP_REQUIRED", r"pip (\S+)"),
         ("ansible", "ansible --version", "ANSIBLE_REQUIRED", r"ansible \[core (\S+)\]"),
         (
@@ -32,12 +33,7 @@ def check_software():
             "AVD_COLLECTION_REQUIRED",
             r"arista.avd (\S+)",
         ),
-        (
-            "pyavd",
-            "pip3 show pyavd",
-            "PYAVD_REQUIRED",
-            r"Version: (\S+)",
-        ),
+        ("pyavd", "pip3 show pyavd", "PYAVD_REQUIRED", r"Version: (\S+)"),
         ("cvprac", "pip3 show cvprac", "CVPRAC_REQUIRED", r"Version: (\S+)"),
         ("requests", "pip3 show requests", "REQUESTS_REQUIRED", r"Version: (\S+)"),
         ("docker-py", "pip3 show docker", "DOCKER_PY_REQUIRED", r"Version: (\S+)"),
@@ -50,6 +46,7 @@ def check_software():
     print("")
 
     all_installed = True
+    missing_software = []
 
     for name, command, env_var, version_pattern in software_list:
         try:
@@ -73,6 +70,7 @@ def check_software():
             print(f"{name} - Not Installed")
             all_installed = False
             os.environ[env_var] = "true"
+            missing_software.append(env_var)
 
     if all_installed:
         print("\nAll software requirements met!")
@@ -84,6 +82,11 @@ def check_software():
         print("Installing Missing Software")
         print("----------------------------------------")
         print("")
+
+        # Export the missing software environment variables
+        for env_var in missing_software:
+            os.system(f"export {env_var}=true")
+
         os.environ["RESTART_SCRIPT"] = "true"
         subprocess.run("chmod +x ./install.sh", shell=True)
         subprocess.run(["./install.sh"], check=True)
