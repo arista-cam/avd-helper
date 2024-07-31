@@ -128,6 +128,8 @@ if check_ansible_installed; then
 else
     # Install Ansible using pip with --break-system-packages switch
     sudo python3 -m pip install ansible-core --break-system-packages
+    sudo python3 -m pip install py-avd
+    sudo apt install -y python3-netaddr
 fi
 
 # Check if Arista AVD Collection is already installed
