@@ -13,6 +13,13 @@ import socket
 from pathlib import Path
 
 
+import os
+import subprocess
+import sys
+import time
+import re
+
+
 def check_software():
     os.system("clear")
 
@@ -85,7 +92,7 @@ def check_software():
 
         # Export the missing software environment variables
         for env_var in missing_software:
-            os.system(f"export {env_var}=true")
+            subprocess.run(f"export {env_var}=true", shell=True)
 
         os.environ["RESTART_SCRIPT"] = "true"
         subprocess.run("chmod +x ./install.sh", shell=True)
