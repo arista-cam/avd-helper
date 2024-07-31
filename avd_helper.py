@@ -1,21 +1,115 @@
 import os
 import logging
 import subprocess
-import paramiko
 import yaml
 import time
 import ssl
-import requests
 import uuid
 import sys
-import docker
 import re
 import shutil
 import threading
 import socket
 from pathlib import Path
-from cvprac.cvp_client import CvpClient
 
+
+def check_software():
+    os.system("clear")
+
+    software_list = [
+        ("docker", "docker --version", "Docker", r"Docker version (\S+)"),
+        ("containerlab", "containerlab version", "Containerlab", r"version: (\S+)"),
+        ("python3", "python3 --version", "Python", r"Python (\S+)"),
+        ("pip3", "pip3 --version", "Python-pip", r"pip (\S+)"),
+        ("ansible", "ansible --version", "Ansible-core", r"ansible \[core (\S+)\]"),
+        (
+            "arista.avd",
+            "ansible-galaxy collection list arista.avd",
+            "Arista AVD Ansible Collection",
+            r"arista.avd (\S+)",
+        ),
+        (
+            "pyavd",
+            "pip3 show pyavd",
+            "Arista PyAVD Ansible Collection",
+            r"Version: (\S+)",
+        ),
+        ("cvprac", "pip3 show cvprac", "Python-cvprac", r"Version: (\S+)"),
+        ("requests", "pip3 show requests", "Python-requests", r"Version: (\S+)"),
+        ("docker-py", "pip3 show docker", "Python-docker", r"Version: (\S+)"),
+        ("paramiko", "pip3 show paramiko", "Python-paramiko", r"Version: (\S+)"),
+    ]
+
+    print("----------------------------------------")
+    print("Checking Software Requirements")
+    print("----------------------------------------")
+    print("")
+
+    missing_software = []
+    all_installed = True
+
+    for name, command, display_name, version_pattern in software_list:
+        try:
+            # Animated message
+            for i in range(5):
+                sys.stdout.write(f"\rChecking {display_name}{'.' * (i % 4)}   ")
+                sys.stdout.flush()
+                time.sleep(0.1)
+            sys.stdout.write(
+                "\r" + " " * (len(f"Checking {display_name}{'.' * 4}")) + "\r"
+            )
+
+            output = (
+                subprocess.check_output(command, shell=True, stderr=subprocess.STDOUT)
+                .decode("utf-8")
+                .strip()
+            )
+            match = re.search(version_pattern, output)
+            version = match.group(1) if match else "Unknown"
+            print(f"{display_name} - Installed - Version: {version}")
+
+        except subprocess.CalledProcessError:
+            print(f"{display_name} - Not Installed")
+            all_installed = False
+            missing_software.append(display_name)
+
+    if all_installed:
+        print("\nAll software requirements met!")
+        time.sleep(2)
+        return True
+    else:
+        if missing_software:
+            print("\nThe following software is not installed:")
+            for software in missing_software:
+                print(f"- {software}")
+
+            choice = (
+                input(
+                    "\nWould you like to use the ./install.sh file to fix the issues? (y/n): "
+                )
+                .strip()
+                .lower()
+            )
+            if choice == "y":
+                os.system("clear")
+                print("\nRunning ./install.sh...")
+                os.environ["RESTART_SCRIPT"] = "true"
+                subprocess.run("chmod +x ./install.sh", shell=True)
+                subprocess.run(["./install.sh"], check=True)
+                return True
+            else:
+                print("Please install the missing software manually.")
+                return False
+
+
+if not check_software():
+    sys.exit(1)
+
+# Importing software that is not available from the system by default
+import paramiko
+import requests
+import docker
+from cvprac.cvp_client import CvpClient
 
 ssl._create_default_https_context = ssl._create_unverified_context
 requests.packages.urllib3.disable_warnings()

@@ -175,5 +175,11 @@ else
     echo "requirements.txt not found. Skipping dependency installation."
 fi
 
-
-echo "Installation script completed."
+if [ "$RESTART_SCRIPT" == "true" ]; then
+    export INSTALL_SCRIPT_RUN=1
+    # Restart the Python script
+    exec sudo python3 avd_helper.py
+else
+    echo "Installation script completed."
+    echo "You can now run the avd_helper.py script"
+fi
