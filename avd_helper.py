@@ -77,6 +77,7 @@ class ClabHelper:
         self.log_location = None
         self.stop_event = threading.Event()
         self.animation_threads = []
+        self.host_ip = None
 
     @staticmethod
     def superuser_required(func):
@@ -486,9 +487,26 @@ class ClabHelper:
         print("Network Information")
         print("----------------------------------------")
         print("")
-        dns_server = input("Please enter the IP address of your DNS server: ")
-        ntp_server = input("Please enter the IP address of your NTP server: ")
 
+        # Function to get non-blank input from the user
+        def get_non_blank_input(prompt):
+            while True:
+                user_input = input(prompt).strip()
+                if user_input:
+                    return user_input
+                print("Input cannot be blank. Please try again.")
+
+        # Get DNS server IP address
+        dns_server = get_non_blank_input(
+            "Please enter the IP address of your DNS server: "
+        )
+
+        # Get NTP server IP address
+        ntp_server = get_non_blank_input(
+            "Please enter the IP address of your NTP server: "
+        )
+
+        # Write to the file
         with open(self.network_file, "w") as file:
             file.write(f"dns_server={dns_server}\n")
             file.write(f"ntp_server={ntp_server}")
@@ -549,9 +567,6 @@ class ClabHelper:
 
     def deploy_clab(self):
         self.subprocess_run(f"clab deploy -t {self.topology_file}")
-
-    def destroy_clab(self):
-        self.subprocess_run(f"clab destroy -t {self.topology_file} --cleanup")
 
     def create_commands(self):
         self.commands = [
@@ -736,13 +751,28 @@ class ClabHelper:
                     stderr=log_file,
                     check=True,
                 )
-        except Exception as e:
+        except subprocess.CalledProcessError as e:
+            # This exception is raised if subprocess.run() fails with check=True
             self.ansible_error_logger.error(
                 f"Error running Ansible Build playbook: {e}"
             )
+            self.log_location = (
+                self.ansible_build_log
+            )  # Set log file location for the error message
+            self.error_message(
+                "Ansible Build Playbook failed"
+            )  # Provide a custom error message
+        except Exception as e:
+            # Catch any other exceptions
+            self.ansible_error_logger.error(f"Unexpected error: {e}")
+            self.log_location = (
+                self.ansible_build_log
+            )  # Set log file location for the error message
+            self.error_message("An unexpected error occurred during the Ansible Build")
 
     def ansible_deploy(self):
         playbook = self.script_dir / "playbooks/cv_deploy.yml"
+
         try:
             with open(self.ansible_deploy_log, "w") as log_file:
                 subprocess.run(
@@ -752,15 +782,29 @@ class ClabHelper:
                     stderr=log_file,
                     check=True,
                 )
-        except Exception as e:
+        except subprocess.CalledProcessError as e:
+            # This exception is raised if subprocess.run() fails with check=True
             self.ansible_error_logger.error(
                 f"Error running Ansible Deploy playbook: {e}"
             )
+            self.log_location = (
+                self.ansible_deploy_log
+            )  # Set log file location for the error message
+            self.error_message(
+                "Ansible Deploy Playbook failed"
+            )  # Provide a custom error message
+        except Exception as e:
+            # Catch any other exceptions
+            self.ansible_error_logger.error(f"Unexpected error: {e}")
+            self.log_location = (
+                self.ansible_deploy_log
+            )  # Set log file location for the error message
+            self.error_message("An unexpected error occurred during the Ansible Deploy")
 
     def setup_apache_container(self):
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s.connect((self.cvp_ip, 80))
-        host_ip = s.getsockname()[0]
+        self.host_ip = s.getsockname()[0]
         s.close()
 
         container_name = "avd_apache_server"
@@ -792,19 +836,25 @@ class ClabHelper:
                 ports={"80/tcp": 8080},
                 detach=True,
             )
-            self.clear_console()
-            print("**************************************************")
-            print("\033[1mAutomatically Generated Documentation\033[0m")
-            print("**************************************************")
-            print(
-                f"\nTo view the automatically generated fabric and device documentation, navigate to: \n\033[4mhttp://{host_ip}:8080\033[0m"
-            )
-            print("Hint: You can use CTRL + Click to open the link in a new window\n")
-            input("Please press any key to return to the Main Menu")
-            self.main()
+            time.sleep(3)
         except Exception as e:
             print(f"Error: {e}")
             return
+
+    def documentation_info(self):
+        self.clear_console()
+        print("**************************************************")
+        print("\033[1mAutomatically Generated Documentation\033[0m")
+        print("**************************************************")
+        print(
+            f"\nTo view the automatically generated fabric and device documentation, navigate to: \n\033[4mhttp://{self.host_ip}:8080\033[0m"
+        )
+        print("Hint: You can use CTRL + Click to open the link in a new window\n")
+        input("Please press any key to return to the Main Menu")
+        self.main()
+
+    def destroy_clab(self):
+        self.subprocess_run(f"clab destroy -t {self.topology_file} --cleanup")
 
     def cvp_decommission_devices(self):
         cvp_container = "Tenant"
@@ -999,6 +1049,8 @@ class ClabHelper:
                 self.output_deploy_file.unlink()
             if self.output_ceos_file.exists():
                 self.output_ceos_file.unlink()
+            if self.output_httpd_file.exists():
+                self.output_httpd_file.unlink()
             self.clear_console()
             print("Factory Reset completed.")
             input("Please press any key to return to the Main Menu")
@@ -1142,7 +1194,14 @@ class ClabHelper:
             input("Press Enter to return to the Main Menu")
             self.main()
         elif choice == "3":
-            self.setup_apache_container()
+            self.clear_console()
+            print("========================================")
+            print("Documentation Information")
+            print("========================================")
+            self.run_task_with_animation(
+                self.setup_apache_container, "Starting Docker Container"
+            )
+            self.documentation_info()
         elif choice == "4":
             self.show_logs_menu()
         elif choice == "5":
