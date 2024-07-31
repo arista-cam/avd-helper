@@ -12,6 +12,7 @@ Features include:
 - Automatic creation of management configlets
 - Automatically runs both Build and Deploy playbooks
 - View Ansible output from Build and Deploy playbooks after they have run
+- Host AVD generated documentation with apache container
 
 # Requirements
 In order for arista-avd-clab to work, it requires the following:
@@ -22,6 +23,8 @@ In order for arista-avd-clab to work, it requires the following:
  - [Ansible](https://ansible.com)
  - [AVD](https;//avd.sh)
  - A supported cEOS image (cEOS-4.28.0F and above)
+
+The install.sh file can be used to automatcially install all the required software, however it will only work on Debian/Ubuntu/LinuxMint installs.
  
 
 **Docker** installation guides can be found [here](https://docs.docker.com/engine/install/)<br />
@@ -50,6 +53,7 @@ On first run, the script will prompt you for a CVP Service Token and a Device To
 The script provides instructions on how to generate these tokens so just follow those and you will be fine.<br />
 The 'Deploy Lab' menu option will deploy the lab, register the devices with CVP, provision the devices in CVP, and run the Ansible Build and Deploy playbooks.<br />
 The 'Cleanup Lab' menu option will destroy the lab, decommission the devices from CVP, and remove all configlets and containers from CVP. <br />
+The 'Open Topology Documentation' menu options will start an apache docker container and host a directory listing which contains all of the AVD generated documentation allowing for easy viewing.<br />
 
 # cEOS Install Instructions
 The script will check to see if you have a valid cEOS image already imported into docker, if you dont it will check the EOS folder for a valid cEOS-lab.tar file.
