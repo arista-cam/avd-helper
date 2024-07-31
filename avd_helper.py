@@ -17,27 +17,31 @@ def check_software():
     os.system("clear")
 
     software_list = [
-        ("docker", "docker --version", "Docker", r"Docker version (\S+)"),
-        ("containerlab", "containerlab version", "Containerlab", r"version: (\S+)"),
-        ("python3", "python3 --version", "Python", r"Python (\S+)"),
-        ("pip3", "pip3 --version", "Python-pip", r"pip (\S+)"),
-        ("ansible", "ansible --version", "Ansible-core", r"ansible \[core (\S+)\]"),
+        ("docker", "docker --version", "DOCKER_REQUIRED", r"Docker version (\S+)"),
+        (
+            "containerlab",
+            "containerlab version",
+            "CONTAINERLAB_REQUIRED",
+            r"version: (\S+)",
+        ),
+        ("pip3", "pip3 --version", "PIP_REQUIRED", r"pip (\S+)"),
+        ("ansible", "ansible --version", "ANSIBLE_REQUIRED", r"ansible \[core (\S+)\]"),
         (
             "arista.avd",
             "ansible-galaxy collection list arista.avd",
-            "Arista AVD Ansible Collection",
+            "AVD_COLLECTION_REQUIRED",
             r"arista.avd (\S+)",
         ),
         (
             "pyavd",
             "pip3 show pyavd",
-            "Arista PyAVD Ansible Collection",
+            "PYAVD_REQUIRED",
             r"Version: (\S+)",
         ),
-        ("cvprac", "pip3 show cvprac", "Python-cvprac", r"Version: (\S+)"),
-        ("requests", "pip3 show requests", "Python-requests", r"Version: (\S+)"),
-        ("docker-py", "pip3 show docker", "Python-docker", r"Version: (\S+)"),
-        ("paramiko", "pip3 show paramiko", "Python-paramiko", r"Version: (\S+)"),
+        ("cvprac", "pip3 show cvprac", "CVPRAC_REQUIRED", r"Version: (\S+)"),
+        ("requests", "pip3 show requests", "REQUESTS_REQUIRED", r"Version: (\S+)"),
+        ("docker-py", "pip3 show docker", "DOCKER_PY_REQUIRED", r"Version: (\S+)"),
+        ("paramiko", "pip3 show paramiko", "PARAMIKO_REQUIRED", r"Version: (\S+)"),
     ]
 
     print("----------------------------------------")
@@ -45,19 +49,16 @@ def check_software():
     print("----------------------------------------")
     print("")
 
-    missing_software = []
     all_installed = True
 
-    for name, command, display_name, version_pattern in software_list:
+    for name, command, env_var, version_pattern in software_list:
         try:
             # Animated message
             for i in range(5):
-                sys.stdout.write(f"\rChecking {display_name}{'.' * (i % 4)}   ")
+                sys.stdout.write(f"\rChecking {name}{'.' * (i % 4)}   ")
                 sys.stdout.flush()
                 time.sleep(0.1)
-            sys.stdout.write(
-                "\r" + " " * (len(f"Checking {display_name}{'.' * 4}")) + "\r"
-            )
+            sys.stdout.write("\r" + " " * (len(f"Checking {name}{'.' * 4}")) + "\r")
 
             output = (
                 subprocess.check_output(command, shell=True, stderr=subprocess.STDOUT)
@@ -66,44 +67,66 @@ def check_software():
             )
             match = re.search(version_pattern, output)
             version = match.group(1) if match else "Unknown"
-            print(f"{display_name} - Installed - Version: {version}")
+            print(f"{name} - Installed - Version: {version}")
 
         except subprocess.CalledProcessError:
-            print(f"{display_name} - Not Installed")
+            print(f"{name} - Not Installed")
             all_installed = False
-            missing_software.append(display_name)
+            os.environ[env_var] = "true"
 
     if all_installed:
         print("\nAll software requirements met!")
         time.sleep(2)
         return True
     else:
-        if missing_software:
-            print("\nThe following software is not installed:")
-            for software in missing_software:
-                print(f"- {software}")
-
-            choice = (
-                input(
-                    "\nWould you like to use the ./install.sh file to fix the issues? (y/n): "
-                )
-                .strip()
-                .lower()
-            )
-            if choice == "y":
-                os.system("clear")
-                print("\nRunning ./install.sh...")
-                os.environ["RESTART_SCRIPT"] = "true"
-                subprocess.run("chmod +x ./install.sh", shell=True)
-                subprocess.run(["./install.sh"], check=True)
-                return True
-            else:
-                print("Please install the missing software manually.")
-                return False
+        os.system("clear")
+        print("----------------------------------------")
+        print("Installing Missing Software")
+        print("----------------------------------------")
+        print("")
+        os.environ["RESTART_SCRIPT"] = "true"
+        subprocess.run("chmod +x ./install.sh", shell=True)
+        subprocess.run(["./install.sh"], check=True)
+        return False
 
 
 if not check_software():
     sys.exit(1)
+
+
+def check_and_update_repo():
+    # Fetch the latest changes from the remote
+    fetch_result = subprocess.run(["git", "fetch"], capture_output=True, text=True)
+    if fetch_result.returncode != 0:
+        print(f"Error fetching repository: {fetch_result.stderr}")
+        return
+
+    # Get the hashes for local, remote, and base commits
+    local_hash = subprocess.run(
+        ["git", "rev-parse", "@"], capture_output=True, text=True
+    ).stdout.strip()
+    remote_hash = subprocess.run(
+        ["git", "rev-parse", "@{u}"], capture_output=True, text=True
+    ).stdout.strip()
+    base_hash = subprocess.run(
+        ["git", "merge-base", "@", "@{u}"], capture_output=True, text=True
+    ).stdout.strip()
+
+    # Check if the local repository is up-to-date with the remote
+    if local_hash == remote_hash:
+        return True
+    elif local_hash == base_hash:
+        print("----------------------------------------")
+        print("Updating Repository")
+        print("----------------------------------------")
+        print("")
+        print("Your repository is behind the remote. Updating...")
+        subprocess.run("chmod +x ./update.sh", shell=True)
+        subprocess.run(["./update.sh"], check=True)
+        return False
+    else:
+        print("Unexpected state. Manual intervention might be needed.")
+
 
 # Importing software that is not available from the system by default
 import paramiko

@@ -7,74 +7,8 @@ if [[ "$ID" != "ubuntu" && "$ID" != "debian" && "$ID" != "linuxmint" ]]; then
     exit 1
 fi
 
-# Function to check if Docker is installed
-check_docker_installed() {
-    if command -v docker &> /dev/null
-    then
-        echo "Docker is already installed. Version: $(docker --version)"
-        return 0
-    else
-        return 1
-    fi
-}
-
-# Function to check if Containerlab is installed
-check_containerlab_installed() {
-    if command -v containerlab &> /dev/null
-    then
-        echo "Containerlab is already installed. Version: $(containerlab version | grep -oP 'containerlab version \K.*')"
-        return 0
-    else
-        return 1
-    fi
-}
-
-# Function to check if Python is installed
-check_python_installed() {
-    if command -v python3 &> /dev/null
-    then
-        echo "Python is already installed. Version: $(python3 --version)"
-        return 0
-    else
-        return 1
-    fi
-}
-
-# Function to check if pip is installed
-check_pip_installed() {
-    if command -v pip3 &> /dev/null
-    then
-        echo "pip is already installed. Version: $(pip3 --version)"
-        return 0
-    else
-        return 1
-    fi
-}
-
-# Function to check if Ansible is installed
-check_ansible_installed() {
-    if command -v ansible &> /dev/null
-    then
-        echo "Ansible is already installed. Version: $(ansible --version | head -n 1)"
-        return 0
-    else
-        return 1
-    fi
-}
-# Function to check if Ansible AVD collection is installed
-check_avd_installed() {
-    if sudo ansible-galaxy collection list | grep 'arista.avd'; then
-        echo "Arista AVD Collection is already installed."
-        return 0
-    else
-        return 1
-    fi
-}
-
-# Check if Docker is already installed
-if check_docker_installed; then
-    echo "Skipping Docker installation."
-else
+install_docker() {
+    echo "Installing Docker..."
     # Update the package index
     sudo apt-get update
 
@@ -116,63 +50,91 @@ else
 
     # Verify the Docker installation
     sudo docker --version
-fi
+}
 
-# Check if Containerlab is already installed
-if check_containerlab_installed; then
-    echo "Skipping Containerlab installation."
-else
+install_containerlab() {
+    echo "Installing Containerlab..."
     # Install Containerlab
     sudo bash -c "$(curl -sL https://get.containerlab.dev)"
     
     # Verify the Containerlab installation
     containerlab version
-fi
+}
 
-# Check if Python is already installed
-if check_python_installed; then
-    echo "Skipping Python installation."
-else
+install_python() {
+    echo "Installing Python..."
     # Install Python
     sudo apt-get update
     sudo apt-get install -y python3
-fi
+}
 
-# Check if pip is already installed
-if check_pip_installed; then
-    echo "Skipping pip installation."
-else
+install_pip() {
+    echo "Installing pip..."
     # Install pip using get-pip.py with --break-system-packages switch
     curl -sS https://bootstrap.pypa.io/get-pip.py -o get-pip.py
     sudo python3 get-pip.py --break-system-packages
     rm get-pip.py
-fi
+}
 
-# Check if Ansible is already installed
-if check_ansible_installed; then
-    echo "Skipping Ansible installation."
-else
+install_ansible() {
+    echo "Installing Ansible..."
     # Install Ansible using pip with --break-system-packages switch
     sudo python3 -m pip install ansible-core --break-system-packages
+}
 
-fi
-
-# Check if Arista AVD Collection is already installed
-if check_avd_installed; then
-    echo "Skipping Arista AVD Collection installation."
-else
+install_avd_collection() {
+    echo "Installing Arista AVD Collection..."
     # Install Arista AVD Collection
     sudo ansible-galaxy collection install arista.avd
+}
+
+install_pyavd() {
+    echo "Installing Arista PyAVD Collection..."
+    sudo python3 -m pip install pyavd --break-system-packages
+}
+
+install_other_dependencies() {
+    echo "Installing other dependencies..."
+    sudo apt install -y python3-netaddr
+
+    # Install dependencies from requirements.txt
+    if [ -f requirements.txt ]; then
+        sudo pip3 install -r requirements.txt --break-system-packages
+    else
+        echo "requirements.txt not found. Skipping dependency installation."
+    fi
+}
+
+if [ "$DOCKER_REQUIRED" == "true" ]; then
+    install_docker
 fi
 
-sudo python3 -m pip install pyavd --break-system-packages
-sudo apt install -y python3-netaddr
+if [ "$CONTAINERLAB_REQUIRED" == "true" ]; then
+    install_containerlab
+fi
 
-# Install dependencies from requirements.txt
-if [ -f requirements.txt ]; then
-    sudo pip3 install -r requirements.txt --break-system-packages
-else
-    echo "requirements.txt not found. Skipping dependency installation."
+if [ "$PYTHON_REQUIRED" == "true" ]; then
+    install_python
+fi
+
+if [ "$PIP_REQUIRED" == "true" ]; then
+    install_pip
+fi
+
+if [ "$ANSIBLE_REQUIRED" == "true" ]; then
+    install_ansible
+fi
+
+if [ "$AVD_COLLECTION_REQUIRED" == "true" ]; then
+    install_avd_collection
+fi
+
+if [ "$PYAVD_REQUIRED" == "true" ]; then
+    install_pyavd
+fi
+
+if [ "$CVPRAC_REQUIRED" == "true" ] || [ "$REQUESTS_REQUIRED" == "true" ] || [ "$DOCKER_PY_REQUIRED" == "true" ] || [ "$PARAMIKO_REQUIRED" == "true" ]; then
+    install_other_dependencies
 fi
 
 if [ "$RESTART_SCRIPT" == "true" ]; then
