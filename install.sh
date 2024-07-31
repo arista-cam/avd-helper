@@ -1,5 +1,12 @@
 #!/bin/bash
 
+# Check the operating system
+. /etc/os-release
+if [[ "$ID" != "ubuntu" && "$ID" != "debian" && "$ID" != "linuxmint" ]]; then
+    echo "Sorry, this script only supports Ubuntu, Debian, and Linux Mint."
+    exit 1
+fi
+
 # Function to check if Docker is installed
 check_docker_installed() {
     if command -v docker &> /dev/null
