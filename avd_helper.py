@@ -136,6 +136,9 @@ def check_and_update_repo():
         return False
     else:
         print("Unexpected state. Manual intervention might be needed.")
+        
+if not check_and_update_repo():
+    sys.exit(1)
 
 
 # Importing software that is not available from the system by default
