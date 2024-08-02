@@ -61,15 +61,26 @@ install_pyavd() {
     sudo python3 -m pip install pyavd --break-system-packages
 }
 
-install_other_dependencies() {
-    echo "Installing other dependencies..."
-    sudo apt install -y python3-netaddr
-    if [ -f requirements.txt ]; then
-        sudo pip3 install -r requirements.txt --break-system-packages
-    else
-        echo "requirements.txt not found. Skipping dependency installation."
-    fi
+install_cvprac() {
+    echo "Installing CVPRAC..."
+    sudo python3 -m pip install cvprac --break-system-packages
 }
+
+install_requests() {
+    echo "Installing Requests..."
+    sudo python3 -m pip install requests --break-system-packages
+}
+
+install_docker_py() {
+    echo "Installing Docker-Py..."
+    sudo python3 -m pip install docker-py --break-system-packages
+}
+
+install_paramiko() {
+    echo "Installing Paramiko..."
+    sudo python3 -m pip install paramiko --break-system-packages
+}
+
 
 [ "$DOCKER_REQUIRED" == "true" ] && install_docker
 [ "$CONTAINERLAB_REQUIRED" == "true" ] && install_containerlab
@@ -78,7 +89,10 @@ install_other_dependencies() {
 [ "$ANSIBLE_REQUIRED" == "true" ] && install_ansible
 [ "$AVD_COLLECTION_REQUIRED" == "true" ] && install_avd_collection
 [ "$PYAVD_REQUIRED" == "true" ] && install_pyavd
-([ "$CVPRAC_REQUIRED" == "true" ] || [ "$REQUESTS_REQUIRED" == "true" ] || [ "$DOCKER_PY_REQUIRED" == "true" ] || [ "$PARAMIKO_REQUIRED" == "true" ]) && install_other_dependencies
+[ "$CVPRAC_REQUIRED" == "true" ] && install_cvprac
+[ "$REQUESTS_REQUIRED" == "true" ] && install_requests
+[ "$DOCKER_PY_REQUIRED" == "true" ] && install_docker_py
+[ "$PARAMIKO_REQUIRED" == "true" ] && install_paramiko
 
 if [ "$RESTART_SCRIPT" == "true" ]; then
     export INSTALL_SCRIPT_RUN=1

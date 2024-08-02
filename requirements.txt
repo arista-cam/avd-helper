@@ -1,4 +1,0 @@
-cvprac
-requests
-docker
-paramiko
