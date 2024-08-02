@@ -44,7 +44,7 @@ I have utilised three external python modules in this script:
 The script will check to see if you have a valid cEOS image already imported into docker, if you dont it will check the EOS folder for a valid cEOS-lab.tar file.
 If it cant find one there you will get an error which leaves you with two options, either copy a valid cEOS-lab.tar file to the EOS directory and run the script again OR manually import the image into docker.
 
-Manual Import Instructions
+Manual Import Instructions </br>
 Once a supported cEOS image has been downloaded use the `docker import {CEOS FILENAME} {IMAGE NAME}` command, e.g. `docker import cEOS-lab-4.32.0F.tar ceosimage:4.32.0F`.
 This command imports the container image that you downloaded and saves it into the docker image repository using the *image_name* you have given it.
 You need to follow the correct image naming standard of ceosimage:#.##.##(.#)
