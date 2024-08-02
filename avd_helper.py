@@ -169,7 +169,7 @@ def check_and_update_repo():
     fetch_result = subprocess.run(["git", "fetch"], capture_output=True, text=True)
     if fetch_result.returncode != 0:
         print(f"Error fetching repository: {fetch_result.stderr}")
-        return
+        return False
 
     local_hash = subprocess.run(
         ["git", "rev-parse", "@"], capture_output=True, text=True
@@ -184,7 +184,6 @@ def check_and_update_repo():
     if local_hash == remote_hash:
         return True
     elif local_hash == base_hash:
-        sys.system("clear")
         print("----------------------------------------")
         print("Updating Repository")
         print("----------------------------------------")
@@ -195,6 +194,7 @@ def check_and_update_repo():
         return False
     else:
         print("Unexpected state. Manual intervention might be needed.")
+        return False
 
 
 if not check_and_update_repo():
