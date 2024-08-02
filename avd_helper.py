@@ -184,6 +184,7 @@ def check_and_update_repo():
     if local_hash == remote_hash:
         return True
     elif local_hash == base_hash:
+        sys.system("clear")
         print("----------------------------------------")
         print("Updating Repository")
         print("----------------------------------------")
@@ -1319,17 +1320,11 @@ class ClabHelper:
             self.ansible_error_logger.error(
                 f"Error running Ansible Build playbook: {e}"
             )
-            self.log_location = (
-                self.ansible_build_log
-            )  
-            self.error_message(
-                "Ansible Build Playbook failed"
-            )  
+            self.log_location = self.ansible_build_log
+            self.error_message("Ansible Build Playbook failed")
         except Exception as e:
             self.ansible_error_logger.error(f"Unexpected error: {e}")
-            self.log_location = (
-                self.ansible_build_log
-            )
+            self.log_location = self.ansible_build_log
             self.error_message("An unexpected error occurred during the Ansible Build")
 
     def ansible_deploy(self):
@@ -1361,17 +1356,11 @@ class ClabHelper:
             self.ansible_error_logger.error(
                 f"Error running Ansible Deploy playbook: {e}"
             )
-            self.log_location = (
-                self.ansible_deploy_log
-            )  
-            self.error_message(
-                "Ansible Deploy Playbook failed"
-            )
+            self.log_location = self.ansible_deploy_log
+            self.error_message("Ansible Deploy Playbook failed")
         except Exception as e:
             self.ansible_error_logger.error(f"Unexpected error: {e}")
-            self.log_location = (
-                self.ansible_deploy_log
-            )  
+            self.log_location = self.ansible_deploy_log
             self.error_message("An unexpected error occurred during the Ansible Deploy")
 
     def setup_apache_container(self):
@@ -1810,6 +1799,7 @@ class ClabHelper:
         updating the indicator every `delay` seconds. Once the `stop_event` is set, the animation stops and the message is updated
         to indicate completion.
         """
+
         def animate():
             while not stop_event.is_set():
                 for i in range(1, 5):
@@ -1882,6 +1872,7 @@ class ClabHelper:
                 return menu_choice
             else:
                 print("Invalid choice. Please try again.")
+
     @superuser_required
     def main(self):
         """
