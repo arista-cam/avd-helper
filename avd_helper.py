@@ -10,17 +10,62 @@ import re
 import shutil
 import threading
 import socket
-from pathlib import Path
-
-
 import os
 import subprocess
 import sys
 import time
 import re
+from datetime import datetime, timezone
+from pathlib import Path
+
+
+def check_os_supported():
+    """
+    Check if the operating system is supported by the script.
+
+    The function attempts to open the /etc/os-release file and reads its content.
+    It then checks if the OS is Ubuntu, Debian, or Linux Mint.
+    If the OS is supported, the function returns True.
+    If the OS is not supported, the function clears the console, prints an error message,
+    and exits the script with an error code.
+
+    Returns:
+    bool: True if the OS is supported, False otherwise.
+    """
+    try:
+        with open("/etc/os-release") as f:
+            os_info = f.read()
+    except FileNotFoundError:
+        print("Error: /etc/os-release file not found.")
+        sys.exit(1)
+
+    if "ID=ubuntu" in os_info or "ID=debian" in os_info or "ID=linuxmint" in os_info:
+        return True
+    else:
+        os.system("clear")
+        print("----------------------------------------")
+        print("UNSUPPORTED OS")
+        print("----------------------------------------")
+        print("Sorry, Your operating system is not supported by this script")
+        print("This script only works on Ubuntu, Debian and or Linux Mint")
+
+        sys.exit(1)
+
+
+if not check_os_supported():
+    sys.exit(1)
 
 
 def check_software():
+    """
+    Checks the software requirements for running the Container Lab script.
+
+    Parameters:
+    None
+
+    Returns:
+    bool: True if all software requirements are met, False otherwise.
+    """
     os.system("clear")
 
     software_list = [
@@ -57,7 +102,6 @@ def check_software():
 
     for name, command, env_var, version_pattern in software_list:
         try:
-            # Animated message
             for i in range(5):
                 sys.stdout.write(f"\rChecking {name}{'.' * (i % 4)}   ")
                 sys.stdout.flush()
@@ -84,19 +128,22 @@ def check_software():
         time.sleep(2)
         return True
     else:
+
         os.system("clear")
         print("----------------------------------------")
         print("Installing Missing Software")
         print("----------------------------------------")
         print("")
 
-        # Export the missing software environment variables
         for env_var in missing_software:
             subprocess.run(f"export {env_var}=true", shell=True)
 
         os.environ["RESTART_SCRIPT"] = "true"
+
         subprocess.run("chmod +x ./install.sh", shell=True)
+
         subprocess.run(["./install.sh"], check=True)
+
         return False
 
 
@@ -105,13 +152,25 @@ if not check_software():
 
 
 def check_and_update_repo():
-    # Fetch the latest changes from the remote
+    """
+    This function fetches the latest changes from the remote repository and checks if the local repository is up-to-date.
+    If the local repository is behind the remote, it updates the local repository.
+
+    Parameters:
+    None
+
+    Returns:
+    bool: True if the local repository is up-to-date with the remote, False otherwise.
+
+    Raises:
+    None
+    """
+
     fetch_result = subprocess.run(["git", "fetch"], capture_output=True, text=True)
     if fetch_result.returncode != 0:
         print(f"Error fetching repository: {fetch_result.stderr}")
         return
 
-    # Get the hashes for local, remote, and base commits
     local_hash = subprocess.run(
         ["git", "rev-parse", "@"], capture_output=True, text=True
     ).stdout.strip()
@@ -122,7 +181,6 @@ def check_and_update_repo():
         ["git", "merge-base", "@", "@{u}"], capture_output=True, text=True
     ).stdout.strip()
 
-    # Check if the local repository is up-to-date with the remote
     if local_hash == remote_hash:
         return True
     elif local_hash == base_hash:
@@ -136,7 +194,8 @@ def check_and_update_repo():
         return False
     else:
         print("Unexpected state. Manual intervention might be needed.")
-        
+
+
 if not check_and_update_repo():
     sys.exit(1)
 
@@ -147,8 +206,14 @@ import requests
 import docker
 from cvprac.cvp_client import CvpClient
 
+# Disable SSL warnings for unverified HTTPS requests
 ssl._create_default_https_context = ssl._create_unverified_context
+
+# Disable urllib3 warnings
 requests.packages.urllib3.disable_warnings()
+
+# Disable all console logging messages
+logging.disable(logging.CRITICAL)
 
 
 class ClabHelper:
@@ -173,8 +238,6 @@ class ClabHelper:
         )
         self.template_deploy_file = self.script_dir / "templates" / "cv_deploy.tpl"
         self.output_deploy_file = self.script_dir / "playbooks" / "cv_deploy.yml"
-        self.template_httpd_file = self.script_dir / "templates" / "httpd.tpl"
-        self.output_httpd_file = self.script_dir / "httpd.conf"
         self.doc_dir = self.script_dir / "sites" / "dc1" / "documentation"
         self.intend_dir = self.script_dir / "sites" / "dc1" / "intended"
         self.cvaas_dir = self.script_dir / "sites" / "dc1" / "group_vars" / "CVAAS"
@@ -211,6 +274,19 @@ class ClabHelper:
 
     @staticmethod
     def superuser_required(func):
+        """
+        Decorator to check if the current user has superuser privileges.
+
+        Args:
+        func (function): The function to be decorated.
+
+        Returns:
+        function: The decorated function.
+
+        Raises:
+        logging.error: If the current user does not have superuser privileges.
+        """
+
         def wrapper(self, *args, **kwargs):
             if os.getuid() != 0:
                 logging.error(
@@ -221,15 +297,58 @@ class ClabHelper:
 
         return wrapper
 
+    def get_non_blank_input(self, prompt):
+        """
+        This function prompts the user to enter a non-blank input.
+
+        Parameters:
+        prompt (str): The prompt message to display to the user.
+
+        Returns:
+        str: The user's input, stripped of leading and trailing whitespaces.
+
+        Raises:
+        None
+
+        The function continuously prompts the user until a non-blank input is provided.
+        """
+        while True:
+            user_input = input(prompt).strip()
+            if user_input:
+                return user_input
+            print("Input cannot be blank. Please try again.")
+
     def clear_console(self):
+        """
+        Clears the console by executing the 'clear' command.
+
+        This function uses the 'os.system' method to execute the 'clear' command, which clears the console output.
+        It does not return any value.
+        """
         os.system("clear")
 
     def restart_script(self):
+        """
+        Automatically restarts the script function.
+
+        This function uses the `os.execl` method to replace the current process with a new instance of the Python interpreter.
+        The new instance is started with the same command-line arguments as the current process.
+        """
         python = sys.executable
         os.execl(python, python, *sys.argv)
 
     def setup_logger(self, name, log_file, level=logging.INFO):
+        """
+        Sets up a logger with a specified name, log file, and log level.
 
+        Parameters:
+        name (str): The name of the logger.
+        log_file (str): The path to the log file.
+        level (logging.LEVEL, optional): The log level. Defaults to logging.INFO.
+
+        Returns:
+        logging.Logger: The configured logger.
+        """
         if not os.path.exists(self.log_folder):
             os.makedirs(self.log_folder)
 
@@ -244,12 +363,19 @@ class ClabHelper:
         return logger
 
     def error_message(self, error_info):
-        self.stop_event.set()  # Stop all animations
-        # Wait for all animation threads to finish
+        """
+        Displays an error message and prompts the user to return to the main menu.
+
+        Parameters:
+        error_info (str): A description of the error that occurred.
+
+        Returns:
+        None
+        """
+        self.stop_event.set()
         for thread in self.animation_threads:
             thread.join()
 
-        # Define the border and message lines
         border_char = "*"
         border_length = 68
         error_lines = [
@@ -257,11 +383,9 @@ class ClabHelper:
             f"Please check the {self.log_location} for more information",
         ]
 
-        # Calculate the length of the border based on the longest line
         max_length = max(len(line) for line in error_lines)
-        border_length = max_length + 4  # Add padding for borders
+        border_length = max_length + 4
 
-        # Print the error message
         self.clear_console()
         print(border_char * border_length)
         for line in error_lines:
@@ -272,6 +396,18 @@ class ClabHelper:
         self.main()
 
     def subprocess_run(self, command):
+        """
+        Execute a command using subprocess and handle the result.
+
+        Parameters:
+        command (str): The command to be executed.
+
+        Returns:
+        subprocess.CompletedProcess: The result of the command execution.
+
+        Raises:
+        self.error_message: If the command execution fails, it raises an error message.
+        """
         result = subprocess.run(
             command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE
         )
@@ -286,7 +422,16 @@ class ClabHelper:
         return result
 
     def check_ceosimage(self):
+        """
+        This function checks the ceosimage Docker images for compatibility with cgroups v1.
+        If any image is found to be below the supported version, a warning message is displayed.
 
+        Parameters:
+        None
+
+        Returns:
+        None
+        """
         client = docker.from_env()
         images = client.images.list()
         threshold_version = "4.32.0F"
@@ -299,7 +444,6 @@ class ClabHelper:
                 for tag in ceosimage_tags:
                     _, version = tag.split(":")
 
-                    # Parsing the version
                     version_match = re.match(r"(\d+)\.(\d+)\.(\d+)([A-Za-z]*)", version)
                     threshold_match = re.match(
                         r"(\d+)\.(\d+)\.(\d+)([A-Za-z]*)", threshold_version
@@ -333,13 +477,24 @@ class ClabHelper:
             self.docker_functions()
 
     def docker_functions(self):
+        """
+        Importing Docker Images.
+
+        This function imports cEOS-lab.tar files from the ./EOS directory into Docker.
+        If no cEOS-lab.tar files are found, it prompts the user to add the file or exit.
+
+        Parameters:
+        None
+
+        Returns:
+        None
+        """
         self.clear_console()
         print("----------------------------------------")
         print("Importing Docker Images")
         print("----------------------------------------")
         print("")
 
-        # Finding tar files
         tar_file_paths = []
         for file in os.listdir("./EOS"):
             if file.startswith("cEOS-lab") and file.endswith(".tar"):
@@ -410,6 +565,16 @@ class ClabHelper:
                     print("Invalid input. Please enter 'y' to restart or 'n' to exit.")
 
     def check_files(self):
+        """
+        This function checks the existence of the token, network, and CVP configuration files.
+        If any of the files are missing, it calls the respective methods to get the required credentials and network information.
+
+        Parameters:
+        self (object): The object calling the function.
+
+        Returns:
+        None
+        """
         files = {
             "token": self.token_file,
             "network": self.network_file,
@@ -444,6 +609,19 @@ class ClabHelper:
             self.get_network_info()
 
     def read_cvp_credentials(self):
+        """
+        Read CVP credentials from the specified files.
+
+        Parameters:
+        self (object): The object calling the function.
+
+        Returns:
+        None
+
+        The function reads the CVP and token files, extracts the relevant information,
+        and stores it in the object's attributes. It also determines whether the CVP
+        is of type 'cvaas' and stores the corresponding API server if applicable.
+        """
         with open(self.cvp_file, "r") as file:
             lines = file.readlines()
         self.creds = {
@@ -458,7 +636,6 @@ class ClabHelper:
             line.strip().split("=")[0]: line.strip().split("=")[1] for line in lines
         }
         self.cvp_token = self.tokens.get("cvp_token", None)
-        self.device_token = self.tokens.get("device_token", None)
 
         if self.cvp_type == "cvaas":
             self.is_cvaas = True
@@ -467,6 +644,15 @@ class ClabHelper:
             self.is_cvaas = False
 
     def get_cvp_version(self):
+        """
+        Determine the version of CVP being used.
+
+        Parameters:
+        None
+
+        Returns:
+        str: The version of CVP being used. Either 'cvp_vm' or 'cvaas'.
+        """
         self.clear_console()
         print("----------------------------------------")
         print("Which version of CVP are you using?")
@@ -475,13 +661,40 @@ class ClabHelper:
         print("2. CVaaS\n")
 
         while True:
-            cvp_choice = input("Enter your choice: ")
+            cvp_choice = input("Enter your choice (1 or 2): ")
             if cvp_choice in ["1", "2"]:
-                return "cvp_vm" if cvp_choice == "1" else "cvaas"
+                version = "cvp_vm" if cvp_choice == "1" else "cvaas"
+                if version == "cvp_vm":
+                    selection = "CloudVision VM"
+                else:
+                    selection = "CVaaS"
+
+                confirmation = (
+                    input(f"You selected {selection}. Is this correct? [y/n]: ")
+                    .strip()
+                    .lower()
+                )
+                if confirmation in ["yes", "y"]:
+                    return version
+                else:
+                    print()
             else:
                 logging.error("Invalid choice for CVP type. Please try again.")
 
     def get_cvaas_instance(self):
+        """
+        This function retrieves the URL of the selected CVaaS instance.
+
+        Parameters:
+        None
+
+        Returns:
+        str: The URL of the selected CVaaS instance.
+
+        The function prompts the user to select a CVaaS instance from a list of options.
+        It then validates the user's input and returns the corresponding URL.
+        If the user's input is invalid, the function prompts them to try again.
+        """
         self.clear_console()
         print("----------------------------------------")
         print("CVP Server Information")
@@ -497,37 +710,84 @@ class ClabHelper:
         print("9. Staging (Most Likely This One)\n")
 
         instance_mapping = {
-            "1": "www.cv-prod-us-central1-a.arista.io",
-            "2": "www.cv-prod-us-central1-c.arista.io",
-            "3": "www.cv-prod-apnortheast-1.arista.io",
-            "4": "www.cv-prod-euwest-2.arista.io",
-            "5": "www.cv-prod-ausoutheast-1.arista.io",
-            "6": "www.cv-prod-na-northeast1-b.arista.io",
-            "7": "www.cv-prod-cv-prod-uk-1.arista.io",
-            "8": "www.cv-staging.corp.arista.io",
-            "9": "www.cv-staging.corp.arista.io",
-            "": "www.cv-staging.corp.arista.io",
+            "1": ("United States 1a", "www.cv-prod-us-central1-a.arista.io"),
+            "2": ("United States 1c", "www.cv-prod-us-central1-c.arista.io"),
+            "3": ("Japan", "www.cv-prod-apnortheast-1.arista.io"),
+            "4": ("Germany", "www.cv-prod-euwest-2.arista.io"),
+            "5": ("Australia", "www.cv-prod-ausoutheast-1.arista.io"),
+            "6": ("Canada", "www.cv-prod-na-northeast1-b.arista.io"),
+            "7": ("United Kingdom", "www.cv-prod-cv-prod-uk-1.arista.io"),
+            "8": ("Dev", "www.cv-staging.corp.arista.io"),
+            "9": ("Staging", "www.cv-staging.corp.arista.io"),
+            "": ("Staging", "www.cv-staging.corp.arista.io"),
         }
 
         while True:
-            cvp_instance = input("Please select the CVaaS instance [9]: ")
+            cvp_instance = input("Please select the CVaaS instance [9]: ").strip()
             if cvp_instance in instance_mapping:
-                return instance_mapping[cvp_instance]
+                name, url = instance_mapping[cvp_instance]
+
+                confirmation = (
+                    input(f"You selected {name}. Is this correct? (yes/no): ")
+                    .strip()
+                    .lower()
+                )
+                if confirmation in ["yes", "y"]:
+                    return url
+                else:
+                    print()
             else:
                 logging.error("Invalid choice. Please try again.")
 
     def get_cvp_credentials(self):
+        """
+        This function retrieves the CVP credentials.
+
+        It first determines the CVP version (either 'cvaas' or 'cvp').
+        Then, it prompts the user to enter the CVP IP address.
+        If the CVP version is 'cvaas', it retrieves the API server mapping.
+        It writes the CVP type, IP address, and API server (if applicable) to a file.
+
+        After that, it prompts the user to enter the CVP service account token.
+        It connects to the CVP server using the provided token.
+        It retrieves all service account tokens and checks for any that will expire within 30 days.
+        If any tokens are found, it prints a warning message.
+
+        Finally, it writes the CVP token to a file.
+
+        Parameters:
+        self (object): The object calling the function.
+
+        Returns:
+        None
+        """
         cvp_version = self.get_cvp_version()
         self.clear_console()
 
         if cvp_version == "cvaas":
             cvp_ip = self.get_cvaas_instance()
+            is_cvaas = True
         else:
-            print("----------------------------------------")
-            print("CVP Server Information")
-            print("----------------------------------------")
-            cvp_ip = input("Please enter the CVP IP address: ")
-            print("")
+            is_cvaas = False
+            while True:
+                self.clear_console()
+                print("----------------------------------------")
+                print("CVP Server Information")
+                print("----------------------------------------")
+                cvp_ip = self.get_non_blank_input(
+                    "Please enter the CVP IP address: "
+                ).strip()
+                print("")
+
+                confirmation = (
+                    input(f"You entered {cvp_ip}. Is this correct? [y/n]: ")
+                    .strip()
+                    .lower()
+                )
+                if confirmation in ["yes", "y"]:
+                    break
+                else:
+                    print("Please re-enter the CVP IP address.\n")
 
         api_server_mapping = {
             "cv-prod-us-central1-a.arista.io": "apiserver.cv-prod-us-central1-a.arista.io:443",
@@ -550,59 +810,95 @@ class ClabHelper:
             if cvp_version == "cvaas":
                 file.write(f"api_server={api_server}\n")
 
-        self.clear_console()
-        print("**************************************************")
-        print("\033[1mCVP Service Account Token\033[0m")
-        print("**************************************************")
-        print(
-            f"\nTo generate a service account token, navigate to: \n\033[4mhttps://{cvp_ip}/cv/settings/aaa-service-accounts\033[0m"
-        )
-        print("Hint: You can use CTRL + Click to open the link in a new window\n")
-        print("**************************************************")
-        print("\033[1mSteps:\033[0m")
-        print("**************************************************")
-        print(
-            "1. Click the blue \033[1m+New Server Account\033[0m button and fill in the details:\n"
-        )
-        print("   \033[1mService Account Name:\033[0m Ansible")
-        print("   \033[1mDescription:\033[0m Ansible Service Account")
-        print("   \033[1mStatus:\033[0m Enabled")
-        print("   \033[1mRole:\033[0m network-admin\n")
-        print(
-            "2. Click \033[1mCreate\033[0m and then select the \033[1mansible\033[0m service account from the list below."
-        )
-        print(
-            "3. Under the \033[1mGenerate Service Account Token\033[0m section, fill in the Description field."
-        )
-        print(
-            "4. Select a \033[1mValid Until\033[0m date and click the \033[1mGenerate\033[0m button.\n"
-        )
+        while True:
+            self.clear_console()
+            print("**************************************************")
+            print("\033[1mCVP Service Account Token\033[0m")
+            print("**************************************************")
+            print(
+                f"\nTo generate a service account token, navigate to: \n\033[4mhttps://{cvp_ip}/cv/settings/aaa-service-accounts\033[0m"
+            )
+            print("Hint: You can use CTRL + Click to open the link in a new window\n")
+            print("**************************************************")
+            print("\033[1mSteps:\033[0m")
+            print("**************************************************")
+            print(
+                "1. Click the blue \033[1m+New Server Account\033[0m button and fill in the details:\n"
+            )
+            print("   \033[1mService Account Name:\033[0m Ansible")
+            print("   \033[1mDescription:\033[0m Ansible Service Account")
+            print("   \033[1mStatus:\033[0m Enabled")
+            print("   \033[1mRole:\033[0m network-admin\n")
+            print(
+                "2. Click \033[1mCreate\033[0m and then select the \033[1mansible\033[0m service account from the list below."
+            )
+            print(
+                "3. Under the \033[1mGenerate Service Account Token\033[0m section, fill in the Description field."
+            )
+            print(
+                "4. Select a \033[1mValid Until\033[0m date and click the \033[1mGenerate\033[0m button.\n"
+            )
 
-        cvp_token = input("Please paste the CVP service account token here: ")
-        self.clear_console()
-        print("**************************************************")
-        print("\033[1mCVP Device Token\033[0m")
-        print("**************************************************")
-        print(
-            f"\nTo generate a Device Onboarding Token, navigate to: \n\033[4mhttps://{cvp_ip}/cv/devices/device-onboarding\033[0m"
-        )
-        print("Hint: You can use CTRL + Click to open the link in a new window\n")
-        print("**************************************************")
-        print("\033[1mSteps:\033[0m")
-        print("**************************************************")
-        print("1. Click the \033[1mOnboard with Certificates\033[0m option")
-        print(
-            "2. Click the dropdown under \033[1mGenerate the Token\033[0m and select a timeframe for token expiration"
-        )
-        print("3. Click the blue \033[1mGenerate\033[0m button \n")
+            cvp_token = self.get_non_blank_input(
+                "Please paste the CVP service account token here: "
+            ).strip()
 
-        device_token = input("Please paste the device token: ")
+            try:
+                self.cvp_client = CvpClient()
+                self.cvp_client.connect(
+                    nodes=[cvp_ip],
+                    username="",
+                    password="",
+                    is_cvaas=is_cvaas,
+                    api_token=cvp_token,
+                )
+
+                response = self.cvp_client.api.svc_account_token_get_all()
+                current_date = datetime.now(timezone.utc)
+                warnings = []
+                for token in response:
+                    valid_until_str = token["value"]["valid_until"]
+                    valid_until_date = datetime.strptime(
+                        valid_until_str, "%Y-%m-%dT%H:%M:%SZ"
+                    ).replace(tzinfo=timezone.utc)
+                    days_until_expiration = (valid_until_date - current_date).days
+                    if days_until_expiration <= 30:
+                        warning_message = (
+                            f"WARNING: The '{token['value']['description']}' token for '{token['value']['user']}' "
+                            f"will expire in {days_until_expiration} days"
+                        )
+                        warnings.append(warning_message)
+
+                if warnings:
+                    print("")
+                    print("-" * 60)
+                    for warning in warnings:
+                        print(warning)
+                    print("-" * 60)
+                    print("")
+                    input("Press Enter to continue")
+
+                break
+            except Exception as e:
+                print(f"Failed to connect to CVP. Please try again. Error: {str(e)}")
+                input("Press Enter to re-enter the token")
 
         with open(self.token_file, "w") as file:
             file.write(f"cvp_token={cvp_token}\n")
-            file.write(f"device_token={device_token}")
 
     def read_network_info(self):
+        """
+        Read network information from the network configuration file.
+
+        The function opens the network configuration file, reads its contents, and extracts the DNS and NTP server information.
+        The extracted information is stored in the `dns_server` and `ntp_server` attributes of the class instance.
+
+        Parameters:
+        None
+
+        Returns:
+        None
+        """
         with open(self.network_file, "r") as file:
             lines = file.readlines()
         self.creds = {
@@ -612,39 +908,72 @@ class ClabHelper:
         self.ntp_server = self.creds.get("ntp_server", None)
 
     def get_network_info(self):
+        """
+        Collects and validates network information from the user.
+
+        This function prompts the user to enter the IP addresses of their DNS and NTP servers.
+        It then writes the entered information to a network configuration file.
+
+        Parameters:
+        None
+
+        Returns:
+        None
+        """
         self.clear_console()
         print("----------------------------------------")
         print("Network Information")
         print("----------------------------------------")
         print("")
-
-        # Function to get non-blank input from the user
-        def get_non_blank_input(prompt):
-            while True:
-                user_input = input(prompt).strip()
-                if user_input:
-                    return user_input
-                print("Input cannot be blank. Please try again.")
-
-        # Get DNS server IP address
-        dns_server = get_non_blank_input(
+        dns_server = self.get_non_blank_input(
             "Please enter the IP address of your DNS server: "
         )
 
-        # Get NTP server IP address
-        ntp_server = get_non_blank_input(
+        ntp_server = self.get_non_blank_input(
             "Please enter the IP address of your NTP server: "
         )
 
-        # Write to the file
-        with open(self.network_file, "w") as file:
-            file.write(f"dns_server={dns_server}\n")
-            file.write(f"ntp_server={ntp_server}")
+        print("\nYou entered the following information:")
+        print(f"DNS Server IP Address: {dns_server}")
+        print(f"NTP Server IP Address: {ntp_server}")
+
+        confirmation = (
+            input("\nIs this information correct? (yes/no): ").strip().lower()
+        )
+        if confirmation in ["yes", "y"]:
+            with open(self.network_file, "w") as file:
+                file.write(f"dns_server={dns_server}\n")
+                file.write(f"ntp_server={ntp_server}")
+        else:
+            print()
+            self.get_network_info()
 
     def create_inventory(self):
+        """
+        This function creates an inventory for the CVP deployment.
 
-        # Function to handle template processing and writing to output file
+        It reads template files, replaces placeholders with actual values, and writes the processed templates to output files.
+        The function also creates a CVAAS folder if it doesn't exist.
+
+        Parameters:
+        None
+
+        Returns:
+        None
+        """
+
         def process_template(template_file, output_file, replacements):
+            """
+            This helper function processes a template file, replacing placeholders with actual values, and writes the processed template to an output file.
+
+            Parameters:
+            template_file (str): The path to the template file.
+            output_file (str): The path to the output file.
+            replacements (dict): A dictionary of placeholder-value pairs.
+
+            Returns:
+            None
+            """
             if output_file.exists():
                 output_file.unlink()
             with open(template_file, "r") as file:
@@ -655,14 +984,12 @@ class ClabHelper:
             with open(output_file, "w") as file:
                 file.write(template_contents)
 
-        # Process ceos template
         process_template(
             self.template_ceos_file,
             self.output_ceos_file,
             {"{{dns_server}}": self.dns_server, "{{ntp_server}}": self.ntp_server},
         )
 
-        # Process inventory template
         process_template(
             self.template_inventory_file,
             self.output_inventory_file,
@@ -693,12 +1020,29 @@ class ClabHelper:
             },
         )
 
-        shutil.copy(self.template_httpd_file, self.output_httpd_file)
-
     def deploy_clab(self):
+        """
+        Deploy a Cisco Lab using the provided topology file.
+
+        Parameters:
+        self (object): The instance of the class.
+        self.topology_file (str): The path to the topology file.
+
+        Returns:
+        None
+        """
         self.subprocess_run(f"clab deploy -t {self.topology_file}")
 
     def create_commands(self):
+        """
+        This function creates a list of commands to be executed on the clab devices.
+
+        Parameters:
+        self (object): The instance of the class.
+
+        Returns:
+        None. The function modifies the 'commands' attribute of the instance.
+        """
         self.commands = [
             "enable",
             "copy terminal: file:/tmp/cv-onboarding-token",
@@ -717,6 +1061,19 @@ class ClabHelper:
         ]
 
     def cvp_connection(self):
+        """
+        Connect to CloudVision instance.
+
+        Parameters:
+        self (object): The instance of the class.
+
+        self.cvp_ip (str): The IP address of the CloudVision instance.
+        self.is_cvaas (bool): A flag indicating whether the CloudVision instance is a Cloud Vision as a Service (CVAAS) instance.
+        self.cvp_token (str): The API token for authentication with the CloudVision instance.
+
+        Returns:
+        None. The function establishes a connection to the CloudVision instance.
+        """
         self.cvp_client.connect(
             nodes=[self.cvp_ip],
             username="",
@@ -725,7 +1082,42 @@ class ClabHelper:
             api_token=self.cvp_token,
         )
 
+    def cvp_generate_device_token(self):
+        """
+        Generate a device enrollment token for CloudVision instance.
+
+        Parameters:
+        self (object): The instance of the class.
+
+        self.cvp_client (object): An instance of the CloudVision client.
+        self.is_cvaas (bool): A flag indicating whether the CloudVision instance is a Cloud Vision as a Service (CVAAS) instance.
+
+        Returns:
+        None. The function modifies the 'device_token' attribute of the instance.
+        """
+        self.cvp_connection()
+        duration = "86400s"  # Set the desired token duration
+        try:
+            response = self.cvp_client.api.create_enroll_token(duration)
+            if self.is_cvaas:
+                self.device_token = response["enrollmentToken"]["token"]
+            else:
+                self.device_token = response["data"]
+        except Exception as e:
+            logging.error(f"Failed to generate device enrollment token: {str(e)}")
+            return
+
     def cvp_register_devices(self):
+        """
+        This function registers devices in CVP by connecting to each device using SSH,
+        sending commands to the device, and logging the process.
+
+        Parameters:
+        self (object): The instance of the class where this function is called.
+
+        Returns:
+        None
+        """
         try:
             with open(self.topology_file, "r") as file:
                 lines = yaml.safe_load(file)
@@ -768,6 +1160,15 @@ class ClabHelper:
         time.sleep(60)
 
     def cvp_move_devices(self):
+        """
+        This function moves devices from the 'Undefined' container to the 'Tenant' container in CVP.
+
+        Parameters:
+        None
+
+        Returns:
+        None
+        """
         try:
             self.cvp_logger.info("Starting device move process.")
             self.cvp_connection()
@@ -808,6 +1209,15 @@ class ClabHelper:
             self.error_message()
 
     def cvp_create_configlets(self):
+        """
+        This function creates and applies configlets to devices in the 'Tenant' container.
+
+        Parameters:
+        None
+
+        Returns:
+        None
+        """
         try:
             self.cvp_logger.info("Starting configlet creation process.")
             self.cvp_connection()
@@ -865,11 +1275,35 @@ class ClabHelper:
             self.error_message()
 
     def cvp_execute_pending_tasks(self):
+        """
+        Execute all pending tasks in CVP.
+
+        This function retrieves all pending tasks from CVP using the CVP API and executes each task.
+
+        Parameters:
+        None
+
+        Returns:
+        None
+        """
         tasks = self.cvp_client.api.get_tasks_by_status("Pending")
         for task in tasks:
             self.cvp_client.api.execute_task(task["workOrderId"])
 
     def ansible_build(self):
+        """
+        This function runs the Ansible Build playbook.
+
+        Parameters:
+        None
+
+        Returns:
+        None
+
+        Raises:
+        subprocess.CalledProcessError: If the Ansible Build playbook fails.
+        Exception: If an unexpected error occurs during the Ansible Build.
+        """
         playbook = self.script_dir / "playbooks/build_dc1.yml"
 
         try:
@@ -882,25 +1316,36 @@ class ClabHelper:
                     check=True,
                 )
         except subprocess.CalledProcessError as e:
-            # This exception is raised if subprocess.run() fails with check=True
             self.ansible_error_logger.error(
                 f"Error running Ansible Build playbook: {e}"
             )
             self.log_location = (
                 self.ansible_build_log
-            )  # Set log file location for the error message
+            )  
             self.error_message(
                 "Ansible Build Playbook failed"
-            )  # Provide a custom error message
+            )  
         except Exception as e:
-            # Catch any other exceptions
             self.ansible_error_logger.error(f"Unexpected error: {e}")
             self.log_location = (
                 self.ansible_build_log
-            )  # Set log file location for the error message
+            )
             self.error_message("An unexpected error occurred during the Ansible Build")
 
     def ansible_deploy(self):
+        """
+        This function runs the Ansible Deploy playbook.
+
+        Parameters:
+        None
+
+        Returns:
+        None
+
+        Raises:
+        subprocess.CalledProcessError: If the Ansible Deploy playbook fails.
+        Exception: If an unexpected error occurs during the Ansible Deploy.
+        """
         playbook = self.script_dir / "playbooks/cv_deploy.yml"
 
         try:
@@ -913,25 +1358,38 @@ class ClabHelper:
                     check=True,
                 )
         except subprocess.CalledProcessError as e:
-            # This exception is raised if subprocess.run() fails with check=True
             self.ansible_error_logger.error(
                 f"Error running Ansible Deploy playbook: {e}"
             )
             self.log_location = (
                 self.ansible_deploy_log
-            )  # Set log file location for the error message
+            )  
             self.error_message(
                 "Ansible Deploy Playbook failed"
-            )  # Provide a custom error message
+            )
         except Exception as e:
-            # Catch any other exceptions
             self.ansible_error_logger.error(f"Unexpected error: {e}")
             self.log_location = (
                 self.ansible_deploy_log
-            )  # Set log file location for the error message
+            )  
             self.error_message("An unexpected error occurred during the Ansible Deploy")
 
     def setup_apache_container(self):
+        """
+        Sets up an Apache server container using Docker.
+
+        The function connects to the CVP IP address to get the host IP, creates a directory for the documentation,
+        stops and removes any existing Apache server containers, and then runs a new Apache server container.
+
+        Parameters:
+        None
+
+        Returns:
+        None
+
+        Raises:
+        Exception: If there is an error while running the Docker container.
+        """
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s.connect((self.cvp_ip, 80))
         self.host_ip = s.getsockname()[0]
@@ -951,20 +1409,17 @@ class ClabHelper:
 
         try:
             container = client.containers.run(
-                "httpd:latest",
-                name=container_name,
+                "svenstaro/miniserve:latest",
+                name="avd_apache_server",
                 volumes={
                     os.path.abspath(self.doc_dir): {
-                        "bind": "/usr/local/apache2/htdocs/",
+                        "bind": "/srv",
                         "mode": "rw",
                     },
-                    os.path.abspath(self.output_httpd_file): {
-                        "bind": "/usr/local/apache2/conf/httpd.conf",
-                        "mode": "ro",
-                    },
                 },
-                ports={"80/tcp": 8080},
+                ports={"8080/tcp": 8080},
                 detach=True,
+                command="/srv",
             )
             time.sleep(3)
         except Exception as e:
@@ -972,6 +1427,18 @@ class ClabHelper:
             return
 
     def documentation_info(self):
+        """
+        Displays information about the automatically generated documentation.
+
+        This function clears the console, prints a header, and provides instructions on how to access the
+        automatically generated fabric and device documentation. It then waits for user input before returning to the main menu.
+
+        Parameters:
+        None
+
+        Returns:
+        None
+        """
         self.clear_console()
         print("**************************************************")
         print("\033[1mAutomatically Generated Documentation\033[0m")
@@ -984,9 +1451,34 @@ class ClabHelper:
         self.main()
 
     def destroy_clab(self):
+        """
+        Destroys the AVD CLAB environment.
+
+        This function uses the subprocess module to run the 'clab destroy' command with the specified topology file and cleanup option.
+        The topology file is obtained from the 'self.topology_file' attribute of the class instance.
+
+        Parameters:
+        None
+
+        Returns:
+        None
+        """
         self.subprocess_run(f"clab destroy -t {self.topology_file} --cleanup")
 
     def cvp_decommission_devices(self):
+        """
+        Decommission devices in a specified CVP container.
+
+        This function connects to CVP, retrieves devices in the specified container,
+        and decommissions each device. It waits for all devices to be fully decommissioned
+        before proceeding with configlet deletion.
+
+        Parameters:
+        None
+
+        Returns:
+        None
+        """
         cvp_container = "Tenant"
         prefix = "s1-"
         self.cvp_connection()
@@ -1018,7 +1510,6 @@ class ClabHelper:
                     self.log_location = "CVP Log File"
                     self.error_message()
 
-            # Wait for all devices to be fully decommissioned
             self.cvp_logger.info("Starting configlet deletion process.")
             while True:
                 devices = self.cvp_client.api.get_devices_in_container(cvp_container)
@@ -1050,6 +1541,18 @@ class ClabHelper:
             self.error_message()
 
     def cvp_delete_configlets(self):
+        """
+        Deletes all configlets from CVP that start with a specified prefix.
+
+        Parameters:
+        self (ClabHelper): An instance of the ClabHelper class.
+
+        Returns:
+        None
+
+        Raises:
+        Exception: If there is an error retrieving or deleting configlets.
+        """
         prefix = "s1-"
         self.cvp_connection()
         try:
@@ -1077,6 +1580,19 @@ class ClabHelper:
             self.error_message()
 
     def cleanup_docker(self):
+        """
+        Removes and stops the Docker container named 'avd_apache_server'.
+
+        This function connects to the Docker environment, retrieves a list of all containers,
+        and iterates through the list to find the container with the specified name.
+        If the container is found, it stops and removes the container.
+
+        Parameters:
+        None
+
+        Returns:
+        None
+        """
         container_name = "avd_apache_server"
         client = docker.from_env()
         existing_containers = client.containers.list(
@@ -1086,12 +1602,19 @@ class ClabHelper:
             container.stop()
             container.remove()
 
-        if self.output_httpd_file.exists():
-            self.output_httpd_file.unlink()
-
         time.sleep(3)
 
     def show_logs(self, log_file, log_name):
+        """
+        Displays the contents of a specified log file.
+
+        Parameters:
+        log_file (str): The path to the log file.
+        log_name (str): The name of the log file.
+
+        Returns:
+        None
+        """
         self.clear_console()
         try:
             with open(log_file, "r") as file:
@@ -1105,6 +1628,19 @@ class ClabHelper:
         self.show_logs_menu()
 
     def clear_logs(self):
+        """
+        Clears all log files.
+
+        This function checks if each log file exists and deletes it if it does.
+        After clearing the logs, it clears the console and prints a message.
+        Finally, it returns to the main menu.
+
+        Parameters:
+        self (ClabHelper): An instance of the ClabHelper class.
+
+        Returns:
+        None
+        """
         if self.clab_log.exists():
             self.clab_log.unlink()
         if self.ssh_log.exists():
@@ -1126,6 +1662,19 @@ class ClabHelper:
         self.main()
 
     def list_docker_images(self):
+        """
+        Lists all Docker images currently available on the system.
+
+        Parameters:
+        self (ClabHelper): An instance of the ClabHelper class.
+
+        Returns:
+        None
+
+        Prints:
+        A list of all Docker images currently available on the system,
+        including their tags (if any) and their respective IDs.
+        """
         client = docker.from_env()
         images = client.images.list()
         self.clear_console()
@@ -1141,6 +1690,19 @@ class ClabHelper:
         self.main()
 
     def factory_reset(self):
+        """
+        This function performs a factory reset of the script, deleting specific files and folders.
+
+        Parameters:
+        self (ClabHelper): An instance of the ClabHelper class.
+
+        Returns:
+        None
+
+        The function clears the console, prints a warning message, lists the files and folders to be deleted,
+        prompts the user for confirmation, and then deletes the specified files and folders if the user confirms.
+        If the user cancels the operation, the function returns to the main menu.
+        """
         self.clear_console()
         print(68 * "*")
         print(f"! WARNING: THIS WILL RESET THE SCRIPT BACK TO DEFAULT !")
@@ -1148,6 +1710,7 @@ class ClabHelper:
         print(f"The following Files/Folders will be deleted:")
         print(f"- {self.doc_dir}")
         print(f"- {self.intend_dir}")
+        print(f"- {self.log_folder}")
         print(f"- {self.cvaas_dir}")
         print(f"- {self.output_inventory_file}")
         print(f"- {self.token_file}")
@@ -1158,13 +1721,15 @@ class ClabHelper:
         print(68 * "*")
         print("")
         delete = input(
-            "Please confirm that you would like to delete these files/folders [y/n]: "
+            "Please confirm that you would like to delete these files/folders? [y/n]: "
         )
         if delete == "y":
             if self.doc_dir.exists():
                 shutil.rmtree(self.doc_dir)
             if self.intend_dir.exists():
                 shutil.rmtree(self.intend_dir)
+            if self.log_folder.exists():
+                shutil.rmtree(self.log_folder)
             if self.cvaas_dir.exists():
                 shutil.rmtree(self.cvaas_dir)
             if self.output_inventory_file.exists():
@@ -1179,16 +1744,23 @@ class ClabHelper:
                 self.output_deploy_file.unlink()
             if self.output_ceos_file.exists():
                 self.output_ceos_file.unlink()
-            if self.output_httpd_file.exists():
-                self.output_httpd_file.unlink()
             self.clear_console()
             print("Factory Reset completed.")
-            input("Please press any key to return to the Main Menu")
-            self.main()
+            input("Please press any key to Exit")
+            sys.exit(0)
         else:
             self.main()
 
     def show_logs_menu(self):
+        """
+        Displays a menu for selecting and viewing log files.
+
+        Parameters:
+        self (ClabHelper): An instance of the ClabHelper class.
+
+        Returns:
+        None
+        """
         self.clear_console()
         print("----------------------------------------")
         print("Show Logs")
@@ -1223,6 +1795,21 @@ class ClabHelper:
             self.show_logs_menu()
 
     def animated_message(self, stop_event, message="Processing", delay=0.5):
+        """
+        This function creates an animated message in the console. It uses a separate thread to animate the message.
+
+        Parameters:
+        stop_event (threading.Event): An event that, when set, stops the animation.
+        message (str, optional): The initial message to display. Defaults to "Processing".
+        delay (float, optional): The delay between each animation frame. Defaults to 0.5 seconds.
+
+        Returns:
+        threading.Thread: The thread that runs the animation.
+
+        The animation continues until the `stop_event` is set. The animation displays a message with a progress indicator,
+        updating the indicator every `delay` seconds. Once the `stop_event` is set, the animation stops and the message is updated
+        to indicate completion.
+        """
         def animate():
             while not stop_event.is_set():
                 for i in range(1, 5):
@@ -1238,6 +1825,22 @@ class ClabHelper:
         return animation_thread
 
     def run_task_with_animation(self, task_function, message):
+        """
+        This function runs a task function with an animated message in the console.
+
+        Parameters:
+        self (ClabHelper): An instance of the ClabHelper class.
+        task_function (function): The function to be executed.
+        message (str): The initial message to display in the console.
+
+        Returns:
+        None
+
+        The function creates an event to stop the animation and starts a separate thread to animate the message.
+        It then executes the task function. If an exception occurs during the task execution, it stops the animation,
+        joins the animation thread, and displays an error message. If the task execution is successful, it stops the animation
+        and joins the animation thread.
+        """
         local_stop_event = threading.Event()
         animation_thread = self.animated_message(local_stop_event, message)
         self.animation_threads.append(animation_thread)
@@ -1252,6 +1855,15 @@ class ClabHelper:
             animation_thread.join()
 
     def main_menu(self):
+        """
+        Displays the main menu for the AVD CLAB Helper.
+
+        Returns:
+        str: The user's choice from the menu.
+
+        The function clears the console, prints the menu options, and prompts the user to enter their choice.
+        If the user enters an invalid choice, it displays an error message and prompts for a valid choice again.
+        """
         self.clear_console()
         print("----------------------------------------")
         print("AVD CLAB Helper")
@@ -1270,14 +1882,26 @@ class ClabHelper:
                 return menu_choice
             else:
                 print("Invalid choice. Please try again.")
-
     @superuser_required
     def main(self):
+        """
+        The main function of the AVD CLAB Helper.
+
+        This function handles the main menu options and calls the appropriate functions based on the user's choice.
+        It also includes error handling and cleanup operations.
+
+        Parameters:
+        self (ClabHelper): An instance of the ClabHelper class.
+
+        Returns:
+        None
+        """
         self.check_ceosimage()
         self.check_files()
         self.read_cvp_credentials()
         self.read_network_info()
         self.create_inventory()
+        self.cvp_generate_device_token()
         choice = self.main_menu()
         if choice == "1":
             self.clear_console()
@@ -1286,6 +1910,7 @@ class ClabHelper:
             print("========================================")
             self.run_task_with_animation(self.deploy_clab, "Deploying AVD CLAB")
             self.create_commands()
+
             self.run_task_with_animation(
                 self.cvp_register_devices, "Registering Devices with CVP"
             )
