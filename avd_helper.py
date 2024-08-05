@@ -88,7 +88,7 @@ def check_software():
         ("pyavd", "pip3 show pyavd", "PYAVD_REQUIRED", r"Version: (\S+)"),
         ("cvprac", "pip3 show cvprac", "CVPRAC_REQUIRED", r"Version: (\S+)"),
         ("requests", "pip3 show requests", "REQUESTS_REQUIRED", r"Version: (\S+)"),
-        ("docker-py", "pip3 show docker-py", "DOCKER_PY_REQUIRED", r"Version: (\S+)"),
+        ("docker-py", "pip3 show docker", "DOCKER_PY_REQUIRED", r"Version: (\S+)"),
         ("paramiko", "pip3 show paramiko", "PARAMIKO_REQUIRED", r"Version: (\S+)"),
     ]
 

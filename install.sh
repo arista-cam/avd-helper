@@ -73,7 +73,7 @@ install_requests() {
 
 install_docker_py() {
     echo "Installing Docker-Py..."
-    sudo python3 -m pip install docker-py --break-system-packages
+    sudo python3 -m pip install docker --break-system-packages
 }
 
 install_paramiko() {
