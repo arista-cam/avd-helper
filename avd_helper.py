@@ -57,149 +57,149 @@ if not check_os_supported():
     sys.exit(1)
 
 
-# def check_software():
-#     """
-#     Checks the software requirements for running the Container Lab script.
+def check_software():
+    """
+    Checks the software requirements for running the Container Lab script.
 
-#     Parameters:
-#     None
+    Parameters:
+    None
 
-#     Returns:
-#     bool: True if all software requirements are met, False otherwise.
-#     """
-#     os.system("clear")
+    Returns:
+    bool: True if all software requirements are met, False otherwise.
+    """
+    os.system("clear")
 
-#     software_list = [
-#         ("docker", "docker --version", "DOCKER_REQUIRED", r"Docker version (\S+)"),
-#         (
-#             "containerlab",
-#             "containerlab version",
-#             "CONTAINERLAB_REQUIRED",
-#             r"version: (\S+)",
-#         ),
-#         ("python3", "python3 --version", "PYTHON_REQUIRED", r"Python (\S+)"),
-#         ("pip3", "pip3 --version", "PIP_REQUIRED", r"pip (\S+)"),
-#         ("ansible", "ansible --version", "ANSIBLE_REQUIRED", r"ansible \[core (\S+)\]"),
-#         (
-#             "arista.avd",
-#             "ansible-galaxy collection list arista.avd",
-#             "AVD_COLLECTION_REQUIRED",
-#             r"arista.avd (\S+)",
-#         ),
-#         ("pyavd", "pip3 show pyavd", "PYAVD_REQUIRED", r"Version: (\S+)"),
-#         ("cvprac", "pip3 show cvprac", "CVPRAC_REQUIRED", r"Version: (\S+)"),
-#         ("requests", "pip3 show requests", "REQUESTS_REQUIRED", r"Version: (\S+)"),
-#         ("docker-py", "pip3 show docker", "DOCKER_PY_REQUIRED", r"Version: (\S+)"),
-#         ("paramiko", "pip3 show paramiko", "PARAMIKO_REQUIRED", r"Version: (\S+)"),
-#     ]
+    software_list = [
+        ("docker", "docker --version", "DOCKER_REQUIRED", r"Docker version (\S+)"),
+        (
+            "containerlab",
+            "containerlab version",
+            "CONTAINERLAB_REQUIRED",
+            r"version: (\S+)",
+        ),
+        ("python3", "python3 --version", "PYTHON_REQUIRED", r"Python (\S+)"),
+        ("pip3", "pip3 --version", "PIP_REQUIRED", r"pip (\S+)"),
+        ("ansible", "ansible --version", "ANSIBLE_REQUIRED", r"ansible \[core (\S+)\]"),
+        (
+            "arista.avd",
+            "ansible-galaxy collection list arista.avd",
+            "AVD_COLLECTION_REQUIRED",
+            r"arista.avd (\S+)",
+        ),
+        ("pyavd", "pip3 show pyavd", "PYAVD_REQUIRED", r"Version: (\S+)"),
+        ("cvprac", "pip3 show cvprac", "CVPRAC_REQUIRED", r"Version: (\S+)"),
+        ("requests", "pip3 show requests", "REQUESTS_REQUIRED", r"Version: (\S+)"),
+        ("docker-py", "pip3 show docker", "DOCKER_PY_REQUIRED", r"Version: (\S+)"),
+        ("paramiko", "pip3 show paramiko", "PARAMIKO_REQUIRED", r"Version: (\S+)"),
+    ]
 
-#     print("----------------------------------------")
-#     print("Checking Software Requirements")
-#     print("----------------------------------------")
-#     print("")
+    print("----------------------------------------")
+    print("Checking Software Requirements")
+    print("----------------------------------------")
+    print("")
 
-#     all_installed = True
-#     missing_software = []
+    all_installed = True
+    missing_software = []
 
-#     for name, command, env_var, version_pattern in software_list:
-#         try:
-#             for i in range(5):
-#                 sys.stdout.write(f"\rChecking {name}{'.' * (i % 4)}   ")
-#                 sys.stdout.flush()
-#                 time.sleep(0.1)
-#             sys.stdout.write("\r" + " " * (len(f"Checking {name}{'.' * 4}")) + "\r")
+    for name, command, env_var, version_pattern in software_list:
+        try:
+            for i in range(5):
+                sys.stdout.write(f"\rChecking {name}{'.' * (i % 4)}   ")
+                sys.stdout.flush()
+                time.sleep(0.1)
+            sys.stdout.write("\r" + " " * (len(f"Checking {name}{'.' * 4}")) + "\r")
 
-#             output = (
-#                 subprocess.check_output(command, shell=True, stderr=subprocess.STDOUT)
-#                 .decode("utf-8")
-#                 .strip()
-#             )
-#             match = re.search(version_pattern, output)
-#             version = match.group(1) if match else "Unknown"
-#             print(f"{name} - Installed - Version: {version}")
+            output = (
+                subprocess.check_output(command, shell=True, stderr=subprocess.STDOUT)
+                .decode("utf-8")
+                .strip()
+            )
+            match = re.search(version_pattern, output)
+            version = match.group(1) if match else "Unknown"
+            print(f"{name} - Installed - Version: {version}")
 
-#         except subprocess.CalledProcessError:
-#             print(f"{name} - Not Installed")
-#             all_installed = False
-#             os.environ[env_var] = "true"
-#             missing_software.append(env_var)
+        except subprocess.CalledProcessError:
+            print(f"{name} - Not Installed")
+            all_installed = False
+            os.environ[env_var] = "true"
+            missing_software.append(env_var)
 
-#     if all_installed:
-#         print("\nAll software requirements met!")
-#         time.sleep(2)
-#         return True
-#     else:
+    if all_installed:
+        print("\nAll software requirements met!")
+        time.sleep(2)
+        return True
+    else:
 
-#         os.system("clear")
-#         print("----------------------------------------")
-#         print("Installing Missing Software")
-#         print("----------------------------------------")
-#         print("")
+        os.system("clear")
+        print("----------------------------------------")
+        print("Installing Missing Software")
+        print("----------------------------------------")
+        print("")
 
-#         for env_var in missing_software:
-#             subprocess.run(f"export {env_var}=true", shell=True)
+        for env_var in missing_software:
+            subprocess.run(f"export {env_var}=true", shell=True)
 
-#         os.environ["RESTART_SCRIPT"] = "true"
+        os.environ["RESTART_SCRIPT"] = "true"
 
-#         subprocess.run("chmod +x ./install.sh", shell=True)
+        subprocess.run("chmod +x ./install.sh", shell=True)
 
-#         subprocess.run(["./install.sh"], check=True)
+        subprocess.run(["./install.sh"], check=True)
 
-#         return False
-
-
-# if not check_software():
-#     sys.exit(1)
+        return False
 
 
-# def check_and_update_repo():
-#     """
-#     This function fetches the latest changes from the remote repository and checks if the local repository is up-to-date.
-#     If the local repository is behind the remote, it updates the local repository.
-
-#     Parameters:
-#     None
-
-#     Returns:
-#     bool: True if the local repository is up-to-date with the remote, False otherwise.
-
-#     Raises:
-#     None
-#     """
-
-#     fetch_result = subprocess.run(["git", "fetch"], capture_output=True, text=True)
-#     if fetch_result.returncode != 0:
-#         print(f"Error fetching repository: {fetch_result.stderr}")
-#         return False
-
-#     local_hash = subprocess.run(
-#         ["git", "rev-parse", "@"], capture_output=True, text=True
-#     ).stdout.strip()
-#     remote_hash = subprocess.run(
-#         ["git", "rev-parse", "@{u}"], capture_output=True, text=True
-#     ).stdout.strip()
-#     base_hash = subprocess.run(
-#         ["git", "merge-base", "@", "@{u}"], capture_output=True, text=True
-#     ).stdout.strip()
-
-#     if local_hash == remote_hash:
-#         return True
-#     elif local_hash == base_hash:
-#         print("----------------------------------------")
-#         print("Updating Repository")
-#         print("----------------------------------------")
-#         print("")
-#         print("Your repository is behind the remote. Updating...")
-#         subprocess.run("chmod +x ./update.sh", shell=True)
-#         subprocess.run(["./update.sh"], check=True)
-#         return False
-#     else:
-#         print("Unexpected state. Manual intervention might be needed.")
-#         return False
+if not check_software():
+    sys.exit(1)
 
 
-# if not check_and_update_repo():
-#     sys.exit(1)
+def check_and_update_repo():
+    """
+    This function fetches the latest changes from the remote repository and checks if the local repository is up-to-date.
+    If the local repository is behind the remote, it updates the local repository.
+
+    Parameters:
+    None
+
+    Returns:
+    bool: True if the local repository is up-to-date with the remote, False otherwise.
+
+    Raises:
+    None
+    """
+
+    fetch_result = subprocess.run(["git", "fetch"], capture_output=True, text=True)
+    if fetch_result.returncode != 0:
+        print(f"Error fetching repository: {fetch_result.stderr}")
+        return False
+
+    local_hash = subprocess.run(
+        ["git", "rev-parse", "@"], capture_output=True, text=True
+    ).stdout.strip()
+    remote_hash = subprocess.run(
+        ["git", "rev-parse", "@{u}"], capture_output=True, text=True
+    ).stdout.strip()
+    base_hash = subprocess.run(
+        ["git", "merge-base", "@", "@{u}"], capture_output=True, text=True
+    ).stdout.strip()
+
+    if local_hash == remote_hash:
+        return True
+    elif local_hash == base_hash:
+        print("----------------------------------------")
+        print("Updating Repository")
+        print("----------------------------------------")
+        print("")
+        print("Your repository is behind the remote. Updating...")
+        subprocess.run("chmod +x ./update.sh", shell=True)
+        subprocess.run(["./update.sh"], check=True)
+        return False
+    else:
+        print("Unexpected state. Manual intervention might be needed.")
+        return False
+
+
+if not check_and_update_repo():
+    sys.exit(1)
 
 
 # Importing software that is not available from the system by default
@@ -215,7 +215,7 @@ ssl._create_default_https_context = ssl._create_unverified_context
 requests.packages.urllib3.disable_warnings()
 
 # Disable all console logging messages
-#logging.disable(logging.CRITICAL)
+logging.disable(logging.CRITICAL)
 
 
 class ClabHelper:
@@ -1011,20 +1011,19 @@ class ClabHelper:
             with open(output_file, "w") as file:
                 file.write(template_contents)
 
-        # Determine the file suffixes based on the topology type
+
         suffix = "single" if self.topology_type == "single" else "dual"
 
-        # Common replacements
+
         common_replacements = {"{{dns_server}}": self.dns_server, "{{ntp_server}}": self.ntp_server}
 
-        # Process CEOS file
+
         process_template(
             self.template_ceos_file,
             getattr(self, f"output_{suffix}_ceos_file"),
             common_replacements
         )
 
-        # Process deploy file
         cvp_certs = "True" if self.cvp_type == "cvaas" else "False"
         process_template(
             self.template_deploy_file,
@@ -1036,7 +1035,6 @@ class ClabHelper:
             }
         )
 
-        # Process topology file
         process_template(
             getattr(self, f"template_{suffix}_topology_file"),
             getattr(self, f"output_{suffix}_topology_file"),
@@ -1123,7 +1121,7 @@ class ClabHelper:
         None. The function modifies the 'device_token' attribute of the instance.
         """
         self.cvp_connection()
-        duration = "86400s"  # Set the desired token duration
+        duration = "86400s" 
         try:
             response = self.cvp_client.api.create_enroll_token(duration)
             if self.is_cvaas:
@@ -1515,16 +1513,13 @@ class ClabHelper:
         Returns:
         None
         """
-        # Run 'clab inspect -a -f json' to get the list of running containers
         result = subprocess.run(['clab', 'inspect', '-a', '-f', 'json'], capture_output=True, text=True)
 
         if result.returncode != 0:
             raise RuntimeError(f"Failed to inspect CLAB environments: {result.stderr}")
 
-        # Parse the JSON output
         running_labs = json.loads(result.stdout)
 
-        # Check for matching topologies
         for container in running_labs.get("containers", []):
             lab_path = container.get("labPath")
             if lab_path == "single_l3ls/topology.yaml":
@@ -1534,7 +1529,6 @@ class ClabHelper:
                 self.topology_file = self.script_dir / "dual_l3ls" / "topology.yaml" 
                 break
 
-        # Destroy the CLAB environment with the updated topology file
         self.working_dir = self.script_dir
         self.subprocess_run(f"clab destroy -t {self.topology_file} --cleanup")
 
@@ -1948,7 +1942,6 @@ class ClabHelper:
         """
         self.topology_type = topology_type
     
-        # Determine file paths based on topology_type
         if topology_type == "single":
             self.inventory_file = self.single_inv_file
             self.topology_file = self.output_single_topology_file
