@@ -15,6 +15,7 @@ import subprocess
 import sys
 import time
 import re
+import json
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -56,149 +57,149 @@ if not check_os_supported():
     sys.exit(1)
 
 
-def check_software():
-    """
-    Checks the software requirements for running the Container Lab script.
+# def check_software():
+#     """
+#     Checks the software requirements for running the Container Lab script.
 
-    Parameters:
-    None
+#     Parameters:
+#     None
 
-    Returns:
-    bool: True if all software requirements are met, False otherwise.
-    """
-    os.system("clear")
+#     Returns:
+#     bool: True if all software requirements are met, False otherwise.
+#     """
+#     os.system("clear")
 
-    software_list = [
-        ("docker", "docker --version", "DOCKER_REQUIRED", r"Docker version (\S+)"),
-        (
-            "containerlab",
-            "containerlab version",
-            "CONTAINERLAB_REQUIRED",
-            r"version: (\S+)",
-        ),
-        ("python3", "python3 --version", "PYTHON_REQUIRED", r"Python (\S+)"),
-        ("pip3", "pip3 --version", "PIP_REQUIRED", r"pip (\S+)"),
-        ("ansible", "ansible --version", "ANSIBLE_REQUIRED", r"ansible \[core (\S+)\]"),
-        (
-            "arista.avd",
-            "ansible-galaxy collection list arista.avd",
-            "AVD_COLLECTION_REQUIRED",
-            r"arista.avd (\S+)",
-        ),
-        ("pyavd", "pip3 show pyavd", "PYAVD_REQUIRED", r"Version: (\S+)"),
-        ("cvprac", "pip3 show cvprac", "CVPRAC_REQUIRED", r"Version: (\S+)"),
-        ("requests", "pip3 show requests", "REQUESTS_REQUIRED", r"Version: (\S+)"),
-        ("docker-py", "pip3 show docker", "DOCKER_PY_REQUIRED", r"Version: (\S+)"),
-        ("paramiko", "pip3 show paramiko", "PARAMIKO_REQUIRED", r"Version: (\S+)"),
-    ]
+#     software_list = [
+#         ("docker", "docker --version", "DOCKER_REQUIRED", r"Docker version (\S+)"),
+#         (
+#             "containerlab",
+#             "containerlab version",
+#             "CONTAINERLAB_REQUIRED",
+#             r"version: (\S+)",
+#         ),
+#         ("python3", "python3 --version", "PYTHON_REQUIRED", r"Python (\S+)"),
+#         ("pip3", "pip3 --version", "PIP_REQUIRED", r"pip (\S+)"),
+#         ("ansible", "ansible --version", "ANSIBLE_REQUIRED", r"ansible \[core (\S+)\]"),
+#         (
+#             "arista.avd",
+#             "ansible-galaxy collection list arista.avd",
+#             "AVD_COLLECTION_REQUIRED",
+#             r"arista.avd (\S+)",
+#         ),
+#         ("pyavd", "pip3 show pyavd", "PYAVD_REQUIRED", r"Version: (\S+)"),
+#         ("cvprac", "pip3 show cvprac", "CVPRAC_REQUIRED", r"Version: (\S+)"),
+#         ("requests", "pip3 show requests", "REQUESTS_REQUIRED", r"Version: (\S+)"),
+#         ("docker-py", "pip3 show docker", "DOCKER_PY_REQUIRED", r"Version: (\S+)"),
+#         ("paramiko", "pip3 show paramiko", "PARAMIKO_REQUIRED", r"Version: (\S+)"),
+#     ]
 
-    print("----------------------------------------")
-    print("Checking Software Requirements")
-    print("----------------------------------------")
-    print("")
+#     print("----------------------------------------")
+#     print("Checking Software Requirements")
+#     print("----------------------------------------")
+#     print("")
 
-    all_installed = True
-    missing_software = []
+#     all_installed = True
+#     missing_software = []
 
-    for name, command, env_var, version_pattern in software_list:
-        try:
-            for i in range(5):
-                sys.stdout.write(f"\rChecking {name}{'.' * (i % 4)}   ")
-                sys.stdout.flush()
-                time.sleep(0.1)
-            sys.stdout.write("\r" + " " * (len(f"Checking {name}{'.' * 4}")) + "\r")
+#     for name, command, env_var, version_pattern in software_list:
+#         try:
+#             for i in range(5):
+#                 sys.stdout.write(f"\rChecking {name}{'.' * (i % 4)}   ")
+#                 sys.stdout.flush()
+#                 time.sleep(0.1)
+#             sys.stdout.write("\r" + " " * (len(f"Checking {name}{'.' * 4}")) + "\r")
 
-            output = (
-                subprocess.check_output(command, shell=True, stderr=subprocess.STDOUT)
-                .decode("utf-8")
-                .strip()
-            )
-            match = re.search(version_pattern, output)
-            version = match.group(1) if match else "Unknown"
-            print(f"{name} - Installed - Version: {version}")
+#             output = (
+#                 subprocess.check_output(command, shell=True, stderr=subprocess.STDOUT)
+#                 .decode("utf-8")
+#                 .strip()
+#             )
+#             match = re.search(version_pattern, output)
+#             version = match.group(1) if match else "Unknown"
+#             print(f"{name} - Installed - Version: {version}")
 
-        except subprocess.CalledProcessError:
-            print(f"{name} - Not Installed")
-            all_installed = False
-            os.environ[env_var] = "true"
-            missing_software.append(env_var)
+#         except subprocess.CalledProcessError:
+#             print(f"{name} - Not Installed")
+#             all_installed = False
+#             os.environ[env_var] = "true"
+#             missing_software.append(env_var)
 
-    if all_installed:
-        print("\nAll software requirements met!")
-        time.sleep(2)
-        return True
-    else:
+#     if all_installed:
+#         print("\nAll software requirements met!")
+#         time.sleep(2)
+#         return True
+#     else:
 
-        os.system("clear")
-        print("----------------------------------------")
-        print("Installing Missing Software")
-        print("----------------------------------------")
-        print("")
+#         os.system("clear")
+#         print("----------------------------------------")
+#         print("Installing Missing Software")
+#         print("----------------------------------------")
+#         print("")
 
-        for env_var in missing_software:
-            subprocess.run(f"export {env_var}=true", shell=True)
+#         for env_var in missing_software:
+#             subprocess.run(f"export {env_var}=true", shell=True)
 
-        os.environ["RESTART_SCRIPT"] = "true"
+#         os.environ["RESTART_SCRIPT"] = "true"
 
-        subprocess.run("chmod +x ./install.sh", shell=True)
+#         subprocess.run("chmod +x ./install.sh", shell=True)
 
-        subprocess.run(["./install.sh"], check=True)
+#         subprocess.run(["./install.sh"], check=True)
 
-        return False
-
-
-if not check_software():
-    sys.exit(1)
+#         return False
 
 
-def check_and_update_repo():
-    """
-    This function fetches the latest changes from the remote repository and checks if the local repository is up-to-date.
-    If the local repository is behind the remote, it updates the local repository.
-
-    Parameters:
-    None
-
-    Returns:
-    bool: True if the local repository is up-to-date with the remote, False otherwise.
-
-    Raises:
-    None
-    """
-
-    fetch_result = subprocess.run(["git", "fetch"], capture_output=True, text=True)
-    if fetch_result.returncode != 0:
-        print(f"Error fetching repository: {fetch_result.stderr}")
-        return False
-
-    local_hash = subprocess.run(
-        ["git", "rev-parse", "@"], capture_output=True, text=True
-    ).stdout.strip()
-    remote_hash = subprocess.run(
-        ["git", "rev-parse", "@{u}"], capture_output=True, text=True
-    ).stdout.strip()
-    base_hash = subprocess.run(
-        ["git", "merge-base", "@", "@{u}"], capture_output=True, text=True
-    ).stdout.strip()
-
-    if local_hash == remote_hash:
-        return True
-    elif local_hash == base_hash:
-        print("----------------------------------------")
-        print("Updating Repository")
-        print("----------------------------------------")
-        print("")
-        print("Your repository is behind the remote. Updating...")
-        subprocess.run("chmod +x ./update.sh", shell=True)
-        subprocess.run(["./update.sh"], check=True)
-        return False
-    else:
-        print("Unexpected state. Manual intervention might be needed.")
-        return False
+# if not check_software():
+#     sys.exit(1)
 
 
-if not check_and_update_repo():
-    sys.exit(1)
+# def check_and_update_repo():
+#     """
+#     This function fetches the latest changes from the remote repository and checks if the local repository is up-to-date.
+#     If the local repository is behind the remote, it updates the local repository.
+
+#     Parameters:
+#     None
+
+#     Returns:
+#     bool: True if the local repository is up-to-date with the remote, False otherwise.
+
+#     Raises:
+#     None
+#     """
+
+#     fetch_result = subprocess.run(["git", "fetch"], capture_output=True, text=True)
+#     if fetch_result.returncode != 0:
+#         print(f"Error fetching repository: {fetch_result.stderr}")
+#         return False
+
+#     local_hash = subprocess.run(
+#         ["git", "rev-parse", "@"], capture_output=True, text=True
+#     ).stdout.strip()
+#     remote_hash = subprocess.run(
+#         ["git", "rev-parse", "@{u}"], capture_output=True, text=True
+#     ).stdout.strip()
+#     base_hash = subprocess.run(
+#         ["git", "merge-base", "@", "@{u}"], capture_output=True, text=True
+#     ).stdout.strip()
+
+#     if local_hash == remote_hash:
+#         return True
+#     elif local_hash == base_hash:
+#         print("----------------------------------------")
+#         print("Updating Repository")
+#         print("----------------------------------------")
+#         print("")
+#         print("Your repository is behind the remote. Updating...")
+#         subprocess.run("chmod +x ./update.sh", shell=True)
+#         subprocess.run(["./update.sh"], check=True)
+#         return False
+#     else:
+#         print("Unexpected state. Manual intervention might be needed.")
+#         return False
+
+
+# if not check_and_update_repo():
+#     sys.exit(1)
 
 
 # Importing software that is not available from the system by default
@@ -214,34 +215,37 @@ ssl._create_default_https_context = ssl._create_unverified_context
 requests.packages.urllib3.disable_warnings()
 
 # Disable all console logging messages
-logging.disable(logging.CRITICAL)
+#logging.disable(logging.CRITICAL)
 
 
 class ClabHelper:
     def __init__(self):
+        self.topology_type = None
         self.script_dir = Path(__file__).parent
-        self.topology_file = self.script_dir / "topology.yaml"
         self.token_file = self.script_dir / "token.tok"
+        self.ceos_version = None
         self.cvp_file = self.script_dir / "cvp_info.txt"
         self.network_file = self.script_dir / "network_info.txt"
         self.template_ceos_file = self.script_dir / "templates" / "ceos.tpl"
-        self.output_ceos_file = self.script_dir / "ceos.cfg"
-        self.template_inventory_file = self.script_dir / "templates" / "inventory.tpl"
-        self.output_inventory_file = self.script_dir / "sites" / "dc1" / "inventory.yml"
-        self.template_cvaas_auth_file = self.script_dir / "templates" / "cvaas_auth.tpl"
-        self.output_cvaas_auth_file = (
-            self.script_dir
-            / "sites"
-            / "dc1"
-            / "group_vars"
-            / "CVAAS"
-            / "cvaas_auth.yml"
-        )
-        self.template_deploy_file = self.script_dir / "templates" / "cv_deploy.tpl"
-        self.output_deploy_file = self.script_dir / "playbooks" / "cv_deploy.yml"
-        self.doc_dir = self.script_dir / "sites" / "dc1" / "documentation"
-        self.intend_dir = self.script_dir / "sites" / "dc1" / "intended"
-        self.cvaas_dir = self.script_dir / "sites" / "dc1" / "group_vars" / "CVAAS"
+        self.output_single_ceos_file = self.script_dir / "single_l3ls" / "ceos.cfg"
+        self.output_dual_ceos_file = self.script_dir / "dual_l3ls" / "ceos.cfg"
+        self.single_inv_file = self.script_dir / "single_l3ls" / "inventory.yml"
+        self.dual_inv_file = self.script_dir / "dual_l3ls" / "inventory.yml" 
+        self.inventory_file = None
+        self.topology_file = None
+        self.template_deploy_file = self.script_dir / "templates" / "deploy.tpl"
+        self.output_deploy_file = self.script_dir / "playbooks" / "deploy.yml"
+        self.template_single_topology_file = self.script_dir / "templates" / "topology_single.tpl"
+        self.output_single_topology_file = self.script_dir / "single_l3ls" / "topology.yaml"
+        self.template_dual_topology_file = self.script_dir / "templates" / "topology_dual.tpl"
+        self.output_dual_topology_file = self.script_dir / "dual_l3ls" / "topology.yaml"
+        self.single_doc_dir = self.script_dir / "single_l3ls" / "documentation"
+        self.dual_doc_dir = self.script_dir / "dual_l3ls" / "documentation"
+        self.single_intend_dir = self.script_dir / "single_l3ls" / "intended"
+        self.dual_intend_dir = self.script_dir / "dual_l3ls" / "intended"
+        self.working_dir = None
+        self.doc_dir = None
+        self.intend_dir = None
         self.creds = {}
         self.tokens = {}
         self.cvp_token = None
@@ -254,7 +258,6 @@ class ClabHelper:
         self.ntp_server = None
         self.device_addr = []
         self.cvp_client = CvpClient()
-        self.inventory = self.script_dir / "sites/dc1/inventory.yml"
         self.log_folder = self.script_dir / "logs"
         self.clab_log = self.log_folder / "clab.log"
         self.clab_logger = self.setup_logger("clab_logger", self.clab_log)
@@ -410,7 +413,7 @@ class ClabHelper:
         self.error_message: If the command execution fails, it raises an error message.
         """
         result = subprocess.run(
-            command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+            command, shell=True, cwd=self.working_dir, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
         )
         if result.returncode != 0:
             self.clab_logger.error(
@@ -449,7 +452,7 @@ class ClabHelper:
                     threshold_match = re.match(
                         r"(\d+)\.(\d+)\.(\d+)([A-Za-z]*)", threshold_version
                     )
-
+                    self.ceos_version = tag
                     if version_match and threshold_match:
                         version_parts = [
                             int(part) for part in version_match.groups()[:3]
@@ -476,6 +479,7 @@ class ClabHelper:
         if not found_ceosimage:
             self.clear_console()
             self.docker_functions()
+            
 
     def docker_functions(self):
         """
@@ -564,7 +568,27 @@ class ClabHelper:
                     break
                 else:
                     print("Invalid input. Please enter 'y' to restart or 'n' to exit.")
+                    
+    def check_hostimage(self):
+        """
+        Check if the 'alpine-host' Docker image exists. If not, build the image using the Dockerfile in the 'alpine_host' directory.
 
+        Parameters:
+        self (object): The object calling the function.
+
+        Returns:
+        None
+        """
+        client = docker.from_env()
+        images = client.images.list()
+        hostimage_tags = [tag for image in images for tag in image.tags if tag.startswith("alpine-host")]
+
+        if not hostimage_tags:
+            alpine_host_dir = self.script_dir / "alpine_host"
+            self.working_dir = alpine_host_dir
+            self.subprocess_run("docker build -t alpine-host .")
+            
+               
     def check_files(self):
         """
         This function checks the existence of the token, network, and CVP configuration files.
@@ -576,6 +600,7 @@ class ClabHelper:
         Returns:
         None
         """
+        
         files = {
             "token": self.token_file,
             "network": self.network_file,
@@ -963,14 +988,14 @@ class ClabHelper:
         None
         """
 
-        def process_template(template_file, output_file, replacements):
+        def process_template(template_file, output_file, replacements=None):
             """
             This helper function processes a template file, replacing placeholders with actual values, and writes the processed template to an output file.
 
             Parameters:
             template_file (str): The path to the template file.
             output_file (str): The path to the output file.
-            replacements (dict): A dictionary of placeholder-value pairs.
+            replacements (dict, optional): A dictionary of placeholder-value pairs. Defaults to None.
 
             Returns:
             None
@@ -979,38 +1004,28 @@ class ClabHelper:
                 output_file.unlink()
             with open(template_file, "r") as file:
                 template_contents = file.read()
-            for placeholder, value in replacements.items():
-                template_contents = template_contents.replace(placeholder, value)
+            if replacements:
+                for placeholder, value in replacements.items():
+                    template_contents = template_contents.replace(placeholder, value)
             output_file.parent.mkdir(parents=True, exist_ok=True)
             with open(output_file, "w") as file:
                 file.write(template_contents)
 
+        # Determine the file suffixes based on the topology type
+        suffix = "single" if self.topology_type == "single" else "dual"
+
+        # Common replacements
+        common_replacements = {"{{dns_server}}": self.dns_server, "{{ntp_server}}": self.ntp_server}
+
+        # Process CEOS file
         process_template(
             self.template_ceos_file,
-            self.output_ceos_file,
-            {"{{dns_server}}": self.dns_server, "{{ntp_server}}": self.ntp_server},
+            getattr(self, f"output_{suffix}_ceos_file"),
+            common_replacements
         )
 
-        process_template(
-            self.template_inventory_file,
-            self.output_inventory_file,
-            {"{{cvp_group}}": "CVAAS", "{{cvp_host}}": "cvaas"},
-        )
-        cvaas_folder = self.script_dir / "sites" / "dc1" / "group_vars" / "CVAAS"
-        if not os.path.exists(cvaas_folder):
-            os.makedirs(cvaas_folder)
+        # Process deploy file
         cvp_certs = "True" if self.cvp_type == "cvaas" else "False"
-
-        process_template(
-            self.template_cvaas_auth_file,
-            self.output_cvaas_auth_file,
-            {
-                "{{cvp_ip}}": self.cvp_ip,
-                "{{cvp_token}}": self.cvp_token,
-                "{{cvp_certs}}": cvp_certs,
-            },
-        )
-
         process_template(
             self.template_deploy_file,
             self.output_deploy_file,
@@ -1018,12 +1033,19 @@ class ClabHelper:
                 "{{cvp_ip}}": self.cvp_ip,
                 "{{cvp_token}}": self.cvp_token,
                 "{{cvp_certs}}": cvp_certs,
-            },
+            }
+        )
+
+        # Process topology file
+        process_template(
+            getattr(self, f"template_{suffix}_topology_file"),
+            getattr(self, f"output_{suffix}_topology_file"),
+            {"{{ceos_image}}": self.ceos_version}
         )
 
     def deploy_clab(self):
         """
-        Deploy a Cisco Lab using the provided topology file.
+        Deploy a Container Lab using the provided topology file.
 
         Parameters:
         self (object): The instance of the class.
@@ -1032,6 +1054,7 @@ class ClabHelper:
         Returns:
         None
         """
+        self.working_dir = self.script_dir
         self.subprocess_run(f"clab deploy -t {self.topology_file}")
 
     def create_commands(self):
@@ -1059,6 +1082,9 @@ class ClabHelper:
             ),
             "shutdown",
             "no shutdown",
+            "interface management0",
+            "no lldp receive",
+            "no lldp transmit",
         ]
 
     def cvp_connection(self):
@@ -1202,7 +1228,7 @@ class ClabHelper:
             self.cvp_execute_pending_tasks()
             self.cvp_logger.info("Executed pending tasks.")
 
-            time.sleep(10)
+            time.sleep(30)
             self.cvp_logger.info("Device move process completed.")
         except Exception as e:
             self.cvp_logger.error(f"Error in cvp_move_devices: {e}")
@@ -1305,12 +1331,12 @@ class ClabHelper:
         subprocess.CalledProcessError: If the Ansible Build playbook fails.
         Exception: If an unexpected error occurs during the Ansible Build.
         """
-        playbook = self.script_dir / "playbooks/build_dc1.yml"
+        playbook = self.script_dir / "playbooks/build.yml"
 
         try:
             with open(self.ansible_build_log, "w") as log_file:
                 subprocess.run(
-                    ["ansible-playbook", playbook, "-i", self.inventory],
+                    ["ansible-playbook", playbook, "-i", self.inventory_file],
                     cwd=self.script_dir,
                     stdout=log_file,
                     stderr=log_file,
@@ -1341,12 +1367,12 @@ class ClabHelper:
         subprocess.CalledProcessError: If the Ansible Deploy playbook fails.
         Exception: If an unexpected error occurs during the Ansible Deploy.
         """
-        playbook = self.script_dir / "playbooks/cv_deploy.yml"
+        playbook = self.script_dir / "playbooks/deploy.yml"
 
         try:
             with open(self.ansible_deploy_log, "w") as log_file:
                 subprocess.run(
-                    ["ansible-playbook", playbook, "-i", self.inventory],
+                    ["ansible-playbook", playbook, "-i", self.inventory_file],
                     cwd=self.script_dir,
                     stdout=log_file,
                     stderr=log_file,
@@ -1362,6 +1388,41 @@ class ClabHelper:
             self.ansible_error_logger.error(f"Unexpected error: {e}")
             self.log_location = self.ansible_deploy_log
             self.error_message("An unexpected error occurred during the Ansible Deploy")
+            
+    def configure_hosts(self):
+        """
+        Configures network interfaces and routes for the hosts in the AVD CLAB environment.
+
+        The function iterates through a dictionary of commands, where each command corresponds to a host in the topology.
+        For each host, it executes Docker commands to configure the network interface, set the IP address, netmask, and bring up the interface.
+        It also adds routes to the host using the `ip route add` command.
+
+        Parameters:
+        self (ClabHelper): An instance of the ClabHelper class.
+
+        Returns:
+        None
+        """
+        commands = {
+            "single": [
+                ("clab-avd-dc1-client1", "11", "10.10.11.100", "255.255.255.0", ["10.10.12.0/24 via 10.10.11.1"]),
+                ("clab-avd-dc1-client2", "12", "10.10.12.100", "255.255.255.0", ["10.10.11.0/24 via 10.10.12.1"])
+            ],
+            "dual": [
+                ("clab-avd-dc1-client1", "11", "10.10.11.100", "255.255.255.0", ["10.10.12.0/24 via 10.10.11.1", "10.10.21.0/24 via 10.10.11.1", "10.10.22.0/24 via 10.10.11.1"]),
+                ("clab-avd-dc1-client2", "21", "10.10.21.100", "255.255.255.0", ["10.10.11.0/24 via 10.10.21.1", "10.10.12.0/24 via 10.10.21.1", "10.10.22.0/24 via 10.10.21.1"]),
+                ("clab-avd-dc2-client1", "12", "10.10.12.100", "255.255.255.0", ["10.10.11.0/24 via 10.10.12.1", "10.10.21.0/24 via 10.10.12.1", "10.10.22.0/24 via 10.10.12.1"]),
+                ("clab-avd-dc2-client2", "22", "10.10.22.100", "255.255.255.0", ["10.10.11.0/24 via 10.10.22.1", "10.10.12.0/24 via 10.10.22.1", "10.10.21.0/24 via 10.10.22.1"])
+            ]
+        }
+
+        for host, vlan_id, ip, netmask, routes in commands[self.topology_type]:
+            self.subprocess_run(f"docker exec -it {host} sudo vconfig add team0 {vlan_id}")
+            self.subprocess_run(f"docker exec -it {host} sudo ifconfig team0.{vlan_id} {ip} netmask {netmask}")
+            self.subprocess_run(f"docker exec -it {host} sudo ip link set up team0.{vlan_id}")
+            for route in routes:
+                self.subprocess_run(f"docker exec -it {host} sudo ip route add {route} dev team0.{vlan_id}")
+
 
     def setup_apache_container(self):
         """
@@ -1443,8 +1504,10 @@ class ClabHelper:
         """
         Destroys the AVD CLAB environment.
 
-        This function uses the subprocess module to run the 'clab destroy' command with the specified topology file and cleanup option.
-        The topology file is obtained from the 'self.topology_file' attribute of the class instance.
+        This function checks for running CLAB topologies using the 'clab inspect -a -f json' command.
+        If the 'labPath' matches either 'single_lsl3/topology.yaml' or 'dual_lsl3/topology.yaml',
+        it updates the 'self.topology_file' to the corresponding file path.
+        Finally, it destroys the CLAB environment using the 'clab destroy' command.
 
         Parameters:
         None
@@ -1452,6 +1515,27 @@ class ClabHelper:
         Returns:
         None
         """
+        # Run 'clab inspect -a -f json' to get the list of running containers
+        result = subprocess.run(['clab', 'inspect', '-a', '-f', 'json'], capture_output=True, text=True)
+
+        if result.returncode != 0:
+            raise RuntimeError(f"Failed to inspect CLAB environments: {result.stderr}")
+
+        # Parse the JSON output
+        running_labs = json.loads(result.stdout)
+
+        # Check for matching topologies
+        for container in running_labs.get("containers", []):
+            lab_path = container.get("labPath")
+            if lab_path == "single_l3ls/topology.yaml":
+                self.topology_file = self.script_dir / "single_l3ls" / "topology.yaml" 
+                break
+            elif lab_path == "dual_l3ls/topology.yaml":
+                self.topology_file = self.script_dir / "dual_l3ls" / "topology.yaml" 
+                break
+
+        # Destroy the CLAB environment with the updated topology file
+        self.working_dir = self.script_dir
         self.subprocess_run(f"clab destroy -t {self.topology_file} --cleanup")
 
     def cvp_decommission_devices(self):
@@ -1469,7 +1553,7 @@ class ClabHelper:
         None
         """
         cvp_container = "Tenant"
-        prefix = "s1-"
+        prefix = "dc"
         self.cvp_connection()
 
         try:
@@ -1542,7 +1626,7 @@ class ClabHelper:
         Raises:
         Exception: If there is an error retrieving or deleting configlets.
         """
-        prefix = "s1-"
+        prefix = "dc"
         self.cvp_connection()
         try:
             all_configlets = self.cvp_client.api.get_configlets()
@@ -1697,32 +1781,37 @@ class ClabHelper:
         print(f"! WARNING: THIS WILL RESET THE SCRIPT BACK TO DEFAULT !")
         print(68 * "*")
         print(f"The following Files/Folders will be deleted:")
-        print(f"- {self.doc_dir}")
-        print(f"- {self.intend_dir}")
+        print(f"- {self.single_doc_dir}")
+        print(f"- {self.dual_doc_dir}")
+        print(f"- {self.single_intend_dir}")
+        print(f"- {self.dual_intend_dir}")
+        print(f"- {self.output_single_topology_file}")
+        print(f"- {self.output_dual_topology_file}")
         print(f"- {self.log_folder}")
-        print(f"- {self.cvaas_dir}")
-        print(f"- {self.output_inventory_file}")
         print(f"- {self.token_file}")
         print(f"- {self.cvp_file}")
         print(f"- {self.network_file}")
         print(f"- {self.output_deploy_file}")
-        print(f"- {self.output_ceos_file}")
         print(68 * "*")
         print("")
         delete = input(
             "Please confirm that you would like to delete these files/folders? [y/n]: "
         )
         if delete == "y":
-            if self.doc_dir.exists():
-                shutil.rmtree(self.doc_dir)
-            if self.intend_dir.exists():
-                shutil.rmtree(self.intend_dir)
+            if self.single_doc_dir.exists():
+                shutil.rmtree(self.single_doc_dir)
+            if self.dual_doc_dir.exists():
+                shutil.rmtree(self.dual_doc_dir)
+            if self.single_intend_dir.exists():
+                shutil.rmtree(self.single_intend_dir)
+            if self.dual_intend_dir.exists():
+                shutil.rmtree(self.dual_intend_dir)
             if self.log_folder.exists():
                 shutil.rmtree(self.log_folder)
-            if self.cvaas_dir.exists():
-                shutil.rmtree(self.cvaas_dir)
-            if self.output_inventory_file.exists():
-                self.output_inventory_file.unlink()
+            if self.output_single_topology_file.exists():
+                self.output_single_topology_file.unlink()
+            if self.output_dual_topology_file.exists():
+                self.output_dual_topology_file.unlink()
             if self.token_file.exists():
                 self.token_file.unlink()
             if self.cvp_file.exists():
@@ -1731,8 +1820,6 @@ class ClabHelper:
                 self.network_file.unlink()
             if self.output_deploy_file.exists():
                 self.output_deploy_file.unlink()
-            if self.output_ceos_file.exists():
-                self.output_ceos_file.unlink()
             self.clear_console()
             print("Factory Reset completed.")
             input("Please press any key to Exit")
@@ -1843,7 +1930,54 @@ class ClabHelper:
         else:
             local_stop_event.set()
             animation_thread.join()
-
+            
+    def execute_deployment(self, topology_type, subdir):
+        """
+        Executes the deployment process for a single or dual L3LS topology.
+    
+        Parameters:
+        self (ClabHelper): An instance of the ClabHelper class.
+        topology_type (str): The type of topology to deploy ("single" or "dual").
+        subdir (str): The subdirectory where the documentation and intended files will be stored.
+    
+        Returns:
+        None
+    
+        The function determines the file paths based on the topology type, clears the console, creates the inventory,
+        prints deployment information, and executes the deployment tasks.
+        """
+        self.topology_type = topology_type
+    
+        # Determine file paths based on topology_type
+        if topology_type == "single":
+            self.inventory_file = self.single_inv_file
+            self.topology_file = self.output_single_topology_file
+        elif topology_type == "dual":
+            self.inventory_file = self.dual_inv_file
+            self.topology_file = self.output_dual_topology_file
+    
+        self.doc_dir = self.script_dir / subdir / "documentation"
+        self.intend_dir = self.script_dir / subdir / "intended"
+    
+        self.clear_console()
+        self.create_inventory()
+    
+        print("========================================")
+        print("Lab Deployment Information")
+        print("========================================")
+    
+        self.run_task_with_animation(self.deploy_clab, "Deploying AVD CLAB")
+        self.create_commands()
+        self.run_task_with_animation(self.cvp_register_devices, "Registering Devices with CVP"),
+        self.run_task_with_animation(self.cvp_move_devices, "Moving Device Containers"),
+        self.run_task_with_animation(self.cvp_create_configlets, "Creating Configlets"),
+        self.run_task_with_animation(self.ansible_build, f"Building {topology_type.capitalize()} L3LS Configurations"),
+        self.run_task_with_animation(self.ansible_deploy, f"Deploying {topology_type.capitalize()} L3LS"),
+        self.run_task_with_animation(self.configure_hosts, "Configuring Hosts")
+    
+        print("\nDeployment Complete!")
+        input("Press Enter to return to the Main Menu")
+        self.main()
     def main_menu(self):
         """
         Displays the main menu for the AVD CLAB Helper.
@@ -1858,17 +1992,18 @@ class ClabHelper:
         print("----------------------------------------")
         print("AVD CLAB Helper")
         print("----------------------------------------")
-        print("1. Deploy Lab")
-        print("2. Cleanup Lab")
-        print("3. Open Topology Documentation")
-        print("4. Show Logs")
-        print("5. Show Docker Images")
-        print("6. Reset All Files (Including Tokens)")
-        print("7. Exit\n")
+        print("1. Deploy Single L3LS")
+        print("2. Deploy Dual L3LS")
+        print("3. Cleanup Lab")
+        print("4. Open Topology Documentation")
+        print("5. Show Logs")
+        print("6. Show Docker Images")
+        print("7. Reset All Files (Including Tokens)")
+        print("8. Exit\n")
 
         while True:
             menu_choice = input("Enter your choice: ")
-            if menu_choice in ["1", "2", "3", "4", "5", "6", "7"]:
+            if menu_choice in ["1", "2", "3", "4", "5", "6", "7", "8"]:
                 return menu_choice
             else:
                 print("Invalid choice. Please try again.")
@@ -1888,39 +2023,17 @@ class ClabHelper:
         None
         """
         self.check_ceosimage()
+        self.check_hostimage()
         self.check_files()
         self.read_cvp_credentials()
         self.read_network_info()
-        self.create_inventory()
         self.cvp_generate_device_token()
         choice = self.main_menu()
         if choice == "1":
-            self.clear_console()
-            print("========================================")
-            print("Lab Deployment Information")
-            print("========================================")
-            self.run_task_with_animation(self.deploy_clab, "Deploying AVD CLAB")
-            self.create_commands()
-
-            self.run_task_with_animation(
-                self.cvp_register_devices, "Registering Devices with CVP"
-            )
-            self.run_task_with_animation(
-                self.cvp_move_devices, "Moving Device Containers"
-            )
-            self.run_task_with_animation(
-                self.cvp_create_configlets, "Creating Configlets"
-            )
-            self.run_task_with_animation(
-                self.ansible_build, "Building L3LS Configurations"
-            )
-            self.run_task_with_animation(self.ansible_deploy, "Deploying L3LS")
-
-            print("\nDeployment Complete!")
-            input("Press Enter to return to the Main Menu")
-
-            self.main()
+            self.execute_deployment("single", "single_l3ls")
         elif choice == "2":
+            self.execute_deployment("dual", "dual_l3ls")
+        elif choice == "3":
             self.clear_console()
             print("========================================")
             print("Lab Cleanup Information")
@@ -1939,7 +2052,7 @@ class ClabHelper:
             print("\nCleanup Complete!")
             input("Press Enter to return to the Main Menu")
             self.main()
-        elif choice == "3":
+        elif choice == "4":
             self.clear_console()
             print("========================================")
             print("Documentation Information")
@@ -1948,13 +2061,13 @@ class ClabHelper:
                 self.setup_apache_container, "Starting Docker Container"
             )
             self.documentation_info()
-        elif choice == "4":
-            self.show_logs_menu()
         elif choice == "5":
-            self.list_docker_images()
+            self.show_logs_menu()
         elif choice == "6":
-            self.factory_reset()
+            self.list_docker_images()
         elif choice == "7":
+            self.factory_reset()
+        elif choice == "8":
             self.clear_console()
             sys.exit(0)
 

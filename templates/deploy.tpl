@@ -1,5 +1,5 @@
 - name: Configuration deployment
-  hosts: dc1_fabric
+  hosts: FABRIC
   connection: local
   gather_facts: false
   tasks:

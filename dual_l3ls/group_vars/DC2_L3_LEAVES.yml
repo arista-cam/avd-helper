@@ -1,0 +1,7 @@
+---
+### group_vars/DC2_L3_LEAVES.yml
+
+type: l3leaf
+dc_name: dc2
+rack: rack1
+pod_name: pod1

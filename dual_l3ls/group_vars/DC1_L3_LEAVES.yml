@@ -1,7 +1,7 @@
 ---
-# DC1 leaf specific vars
+### group_vars/DC1_L3_LEAVES.yml
+
 type: l3leaf
 dc_name: dc1
 rack: rack1
 pod_name: pod1
-
