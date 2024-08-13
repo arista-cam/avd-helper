@@ -224,6 +224,7 @@ class ClabHelper:
         self.script_dir = Path(__file__).parent
         self.token_file = self.script_dir / "token.tok"
         self.ceos_version = None
+        self.ram = None
         self.cvp_file = self.script_dir / "cvp_info.txt"
         self.network_file = self.script_dir / "network_info.txt"
         self.template_ceos_file = self.script_dir / "templates" / "ceos.tpl"
@@ -398,6 +399,18 @@ class ClabHelper:
         print("")
         input("Please press Enter to return to the Main Menu")
         self.main()
+        
+    def get_ram_info(self):
+        with open('/proc/meminfo', 'r') as f:
+            meminfo = f.read()
+
+        meminfo_dict = {}
+        for line in meminfo.splitlines():
+            parts = line.split(':')
+            meminfo_dict[parts[0].strip()] = parts[1].strip()
+
+        total_mem_kb = int(meminfo_dict['MemTotal'].split()[0])
+        self.ram = total_mem_kb / 1024 / 1024
 
     def subprocess_run(self, command):
         """
@@ -1080,9 +1093,6 @@ class ClabHelper:
             ),
             "shutdown",
             "no shutdown",
-            "interface management0",
-            "no lldp receive",
-            "no lldp transmit",
         ]
 
     def cvp_connection(self):
@@ -1945,9 +1955,25 @@ class ClabHelper:
         if topology_type == "single":
             self.inventory_file = self.single_inv_file
             self.topology_file = self.output_single_topology_file
+            if self.ram <= 16:
+                self.clear_console()
+                print("-------------------------------------------------")
+                print("Insufficient RAM. Please allocate at least 16GB.")
+                print("-------------------------------------------------")
+                print("")
+                input("Press Enter to return to the Main Menu")
+                self.main_menu()
         elif topology_type == "dual":
             self.inventory_file = self.dual_inv_file
             self.topology_file = self.output_dual_topology_file
+            if self.ram <= 32:
+                self.clear_console()
+                print("-------------------------------------------------")
+                print("Insufficient RAM. Please allocate at least 32GB.")
+                print("-------------------------------------------------")
+                print("")
+                input("Press Enter to return to the Main Menu")
+                self.main_menu()
     
         self.doc_dir = self.script_dir / subdir / "documentation"
         self.intend_dir = self.script_dir / subdir / "intended"
@@ -2021,6 +2047,7 @@ class ClabHelper:
         self.read_cvp_credentials()
         self.read_network_info()
         self.cvp_generate_device_token()
+        self.get_ram_info()
         choice = self.main_menu()
         if choice == "1":
             self.execute_deployment("single", "single_l3ls")

@@ -3,7 +3,6 @@ FROM alpine:latest
 
 RUN apk update && \
     apk add libteam && \
-    apk add open-lldp && \
     apk add sudo && \
     apk add tcpdump && \
     apk add scapy && \
