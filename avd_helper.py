@@ -225,25 +225,26 @@ class ClabHelper:
         self.token_file = self.script_dir / "token.tok"
         self.ceos_version = None
         self.ram = None
+        self.topology_dir = self.script_dir / "topologies"
         self.cvp_file = self.script_dir / "cvp_info.txt"
         self.network_file = self.script_dir / "network_info.txt"
         self.template_ceos_file = self.script_dir / "templates" / "ceos.tpl"
-        self.output_single_ceos_file = self.script_dir / "single_l3ls" / "ceos.cfg"
-        self.output_dual_ceos_file = self.script_dir / "dual_l3ls" / "ceos.cfg"
-        self.single_inv_file = self.script_dir / "single_l3ls" / "inventory.yml"
-        self.dual_inv_file = self.script_dir / "dual_l3ls" / "inventory.yml" 
+        self.output_single_ceos_file = self.topology_dir / "single_l3ls" / "ceos.cfg"
+        self.output_dual_ceos_file = self.topology_dir / "dual_l3ls" / "ceos.cfg"
+        self.single_inv_file = self.topology_dir / "single_l3ls" / "inventory.yml"
+        self.dual_inv_file = self.topology_dir / "dual_l3ls" / "inventory.yml" 
         self.inventory_file = None
         self.topology_file = None
         self.template_deploy_file = self.script_dir / "templates" / "deploy.tpl"
         self.output_deploy_file = self.script_dir / "playbooks" / "deploy.yml"
         self.template_single_topology_file = self.script_dir / "templates" / "topology_single.tpl"
-        self.output_single_topology_file = self.script_dir / "single_l3ls" / "topology.yaml"
+        self.output_single_topology_file = self.topology_dir / "single_l3ls" / "topology.yaml"
         self.template_dual_topology_file = self.script_dir / "templates" / "topology_dual.tpl"
-        self.output_dual_topology_file = self.script_dir / "dual_l3ls" / "topology.yaml"
-        self.single_doc_dir = self.script_dir / "single_l3ls" / "documentation"
-        self.dual_doc_dir = self.script_dir / "dual_l3ls" / "documentation"
-        self.single_intend_dir = self.script_dir / "single_l3ls" / "intended"
-        self.dual_intend_dir = self.script_dir / "dual_l3ls" / "intended"
+        self.output_dual_topology_file = self.topology_dir / "dual_l3ls" / "topology.yaml"
+        self.single_doc_dir = self.topology_dir / "single_l3ls" / "documentation"
+        self.dual_doc_dir = self.topology_dir / "dual_l3ls" / "documentation"
+        self.single_intend_dir = self.topology_dir / "single_l3ls" / "intended"
+        self.dual_intend_dir = self.topology_dir / "dual_l3ls" / "intended"
         self.working_dir = None
         self.doc_dir = None
         self.intend_dir = None
@@ -437,6 +438,27 @@ class ClabHelper:
         else:
             self.clab_logger.info(f"Command output: {result.stdout.decode()}")
         return result
+    
+    def get_running_labs(self):
+        result = subprocess.run(['clab', 'inspect', '-a', '-f', 'json'], capture_output=True, text=True)
+
+        if result.returncode != 0:
+            raise RuntimeError(f"Failed to inspect CLAB environments: {result.stderr}")
+
+        running_labs = json.loads(result.stdout)
+
+        for container in running_labs.get("containers", []):
+            lab_path = container.get("labPath")
+            if lab_path == "topologies/single_l3ls/topology.yaml":
+                self.topology_file = self.topology_dir / "single_l3ls" / "topology.yaml" 
+                self.topology_type = "single_l3ls"
+                self.doc_dir = self.topology_dir / "single_l3ls" / "documentation"
+                break
+            elif lab_path == "topologies/dual_l3ls/topology.yaml":
+                self.topology_file = self.topology_dir / "dual_l3ls" / "topology.yaml" 
+                self.topology_type = "dual_l3ls"
+                self.doc_dir = self.topology_dir / "dual_l3ls" / "documentation"
+                break
 
     def check_ceosimage(self):
         """
@@ -1448,6 +1470,7 @@ class ClabHelper:
         Raises:
         Exception: If there is an error while running the Docker container.
         """
+        self.get_running_labs()
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s.connect((self.cvp_ip, 80))
         self.host_ip = s.getsockname()[0]
@@ -1505,7 +1528,8 @@ class ClabHelper:
             f"\nTo view the automatically generated fabric and device documentation, navigate to: \n\033[4mhttp://{self.host_ip}:8080\033[0m"
         )
         print("Hint: You can use CTRL + Click to open the link in a new window\n")
-        input("Please press any key to return to the Main Menu")
+        input("Press Enter to Remove the docker container and return to the main menu.")
+        self.subprocess_run("docker rm -f avd_apache_server")
         self.main()
 
     def destroy_clab(self):
@@ -1523,22 +1547,7 @@ class ClabHelper:
         Returns:
         None
         """
-        result = subprocess.run(['clab', 'inspect', '-a', '-f', 'json'], capture_output=True, text=True)
-
-        if result.returncode != 0:
-            raise RuntimeError(f"Failed to inspect CLAB environments: {result.stderr}")
-
-        running_labs = json.loads(result.stdout)
-
-        for container in running_labs.get("containers", []):
-            lab_path = container.get("labPath")
-            if lab_path == "single_l3ls/topology.yaml":
-                self.topology_file = self.script_dir / "single_l3ls" / "topology.yaml" 
-                break
-            elif lab_path == "dual_l3ls/topology.yaml":
-                self.topology_file = self.script_dir / "dual_l3ls" / "topology.yaml" 
-                break
-
+        self.get_running_labs()
         self.working_dir = self.script_dir
         self.subprocess_run(f"clab destroy -t {self.topology_file} --cleanup")
 
@@ -1975,8 +1984,8 @@ class ClabHelper:
                 input("Press Enter to return to the Main Menu")
                 self.main_menu()
     
-        self.doc_dir = self.script_dir / subdir / "documentation"
-        self.intend_dir = self.script_dir / subdir / "intended"
+        self.doc_dir = self.topology_dir / subdir / "documentation"
+        self.intend_dir = self.topology_dir / subdir / "intended"
     
         self.clear_console()
         self.create_inventory()
