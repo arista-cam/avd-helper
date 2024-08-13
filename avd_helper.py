@@ -19,6 +19,11 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
+def print_header(title, width, char="="):
+    print(char * width)
+    print(title.center(width))
+    print(char * width)
+
 
 def check_os_supported():
     """
@@ -44,9 +49,7 @@ def check_os_supported():
         return True
     else:
         os.system("clear")
-        print("----------------------------------------")
-        print("UNSUPPORTED OS")
-        print("----------------------------------------")
+        print_header("UNSUPPORTED OS", width=60)
         print("Sorry, Your operating system is not supported by this script")
         print("This script only works on Ubuntu, Debian and or Linux Mint")
 
@@ -92,10 +95,7 @@ def check_software():
         ("docker-py", "pip3 show docker", "DOCKER_PY_REQUIRED", r"Version: (\S+)"),
         ("paramiko", "pip3 show paramiko", "PARAMIKO_REQUIRED", r"Version: (\S+)"),
     ]
-
-    print("----------------------------------------")
-    print("Checking Software Requirements")
-    print("----------------------------------------")
+    print_header("Checking Software Requirements", width=60)
     print("")
 
     all_installed = True
@@ -131,9 +131,7 @@ def check_software():
     else:
 
         os.system("clear")
-        print("----------------------------------------")
-        print("Installing Missing Software")
-        print("----------------------------------------")
+        print_header("Installing Missing Software", width=60)
         print("")
 
         for env_var in missing_software:
@@ -185,9 +183,7 @@ def check_and_update_repo():
     if local_hash == remote_hash:
         return True
     elif local_hash == base_hash:
-        print("----------------------------------------")
-        print("Updating Repository")
-        print("----------------------------------------")
+        print_header("Updating Repository", width=60)
         print("")
         print("Your repository is behind the remote. Updating...")
         subprocess.run("chmod +x ./update.sh", shell=True)
@@ -498,7 +494,7 @@ class ClabHelper:
 
                         if version_parts < threshold_parts:
                             self.clear_console()
-                            print("-" * 60)
+                            print_header("cEOS Version Below Supported Version", width=60)
                             print(
                                 f"WARNING: {tag} is below the supported version. In versions prior to {threshold_version} the ceos-lab image requires a cgroups v1 environment"
                             )
@@ -508,7 +504,6 @@ class ClabHelper:
                             print(
                                 f"If this issue occurs, either upgrade to {threshold_version} or visit https://containerlab.dev/manual/kinds/ceos/#cgroups-v1 "
                             )
-                            print("-" * 60)
                             input("Press any key to continue...")
 
         if not found_ceosimage:
@@ -530,9 +525,7 @@ class ClabHelper:
         None
         """
         self.clear_console()
-        print("----------------------------------------")
-        print("Importing Docker Images")
-        print("----------------------------------------")
+        print_header("Importing Docker Images", width=60)
         print("")
 
         tar_file_paths = []
@@ -562,29 +555,28 @@ class ClabHelper:
                     )
                     if result.returncode != 0:
                         print("Error importing Docker image:", result.stderr.decode())
-                        print("-" * 60)
+                        print("*" * 60)
                         print(
                             "The cEOS image has failed to import, please use the manual 'docker import' command instead"
                         )
-                        print("-" * 60)
+                        print("*" * 60)
                         input("Press any key to exit")
                         sys.exit(0)
                 else:
                     print("Failed to import Docker image")
-                    print("-" * 60)
+                    print("*" * 60)
                     print(
                         "The cEOS image has failed to import, please use the manual 'docker import' command instead"
                     )
-                    print("-" * 60)
+                    print("*" * 60)
                     input("Press any key to exit")
                     sys.exit(0)
         else:
-            print("-" * 60)
+            print_header("Missing Docker cEOS Image", width=60)
             print("ERROR: There are no docker images with the 'ceosimage' tag")
             print(
                 "Please place the cEOS-lab.tar file in the EOS directory or manually import the image into docker using the 'docker import' command."
             )
-            print("-" * 60)
             while True:
                 user_input = (
                     input(
@@ -715,9 +707,7 @@ class ClabHelper:
         str: The version of CVP being used. Either 'cvp_vm' or 'cvaas'.
         """
         self.clear_console()
-        print("----------------------------------------")
-        print("Which version of CVP are you using?")
-        print("----------------------------------------")
+        print_header("Which version of CVP are you using?", width=60)
         print("1. CloudVision VM")
         print("2. CVaaS\n")
 
@@ -757,9 +747,7 @@ class ClabHelper:
         If the user's input is invalid, the function prompts them to try again.
         """
         self.clear_console()
-        print("----------------------------------------")
-        print("CVP Server Information")
-        print("----------------------------------------")
+        print_header("CVP Server Information", width=60)
         print("1. United States 1a")
         print("2. United States 1c")
         print("3. Japan")
@@ -832,9 +820,7 @@ class ClabHelper:
             is_cvaas = False
             while True:
                 self.clear_console()
-                print("----------------------------------------")
-                print("CVP Server Information")
-                print("----------------------------------------")
+                print_header("CVP Server Information", width=60)
                 cvp_ip = self.get_non_blank_input(
                     "Please enter the CVP IP address: "
                 ).strip()
@@ -982,9 +968,7 @@ class ClabHelper:
         None
         """
         self.clear_console()
-        print("----------------------------------------")
-        print("Network Information")
-        print("----------------------------------------")
+        print_header("Network Information", width=60)
         print("")
         dns_server = self.get_non_blank_input(
             "Please enter the IP address of your DNS server: "
@@ -1521,9 +1505,7 @@ class ClabHelper:
         None
         """
         self.clear_console()
-        print("**************************************************")
-        print("\033[1mAutomatically Generated Documentation\033[0m")
-        print("**************************************************")
+        print_header("Automatically Generated Documentation", width=60)
         print(
             f"\nTo view the automatically generated fabric and device documentation, navigate to: \n\033[4mhttp://{self.host_ip}:8080\033[0m"
         )
@@ -1764,7 +1746,7 @@ class ClabHelper:
         client = docker.from_env()
         images = client.images.list()
         self.clear_console()
-        print("Current Docker Images:")
+        print_header("Docker Images Currently Imported", width=60)
         for image in images:
             tags = image.tags
             if tags:
@@ -1834,7 +1816,7 @@ class ClabHelper:
             if self.output_deploy_file.exists():
                 self.output_deploy_file.unlink()
             self.clear_console()
-            print("Factory Reset completed.")
+            print_header("Factory Reset Complete", width=60)
             input("Please press any key to Exit")
             sys.exit(0)
         else:
@@ -1851,9 +1833,7 @@ class ClabHelper:
         None
         """
         self.clear_console()
-        print("----------------------------------------")
-        print("Show Logs")
-        print("----------------------------------------")
+        print_header("View Logs", width=60)
         print("1. Container Lab Log")
         print("2. SSH Connectivity Logs")
         print("3. Show CVP Log")
@@ -1966,9 +1946,7 @@ class ClabHelper:
             self.topology_file = self.output_single_topology_file
             if self.ram <= 16:
                 self.clear_console()
-                print("-------------------------------------------------")
-                print("Insufficient RAM. Please allocate at least 16GB.")
-                print("-------------------------------------------------")
+                print_header("Insufficient RAM. Please allocate at least 16GB", width=60)
                 print("")
                 input("Press Enter to return to the Main Menu")
                 self.main_menu()
@@ -1977,9 +1955,7 @@ class ClabHelper:
             self.topology_file = self.output_dual_topology_file
             if self.ram <= 32:
                 self.clear_console()
-                print("-------------------------------------------------")
-                print("Insufficient RAM. Please allocate at least 32GB.")
-                print("-------------------------------------------------")
+                print_header("Insufficient RAM. Please allocate at least 32GB", width=60)
                 print("")
                 input("Press Enter to return to the Main Menu")
                 self.main_menu()
@@ -1990,9 +1966,7 @@ class ClabHelper:
         self.clear_console()
         self.create_inventory()
     
-        print("========================================")
-        print("Lab Deployment Information")
-        print("========================================")
+        print_header("Lab Deployment Progress", width=60)
     
         self.run_task_with_animation(self.deploy_clab, "Deploying AVD CLAB")
         self.create_commands()
@@ -2017,9 +1991,7 @@ class ClabHelper:
         If the user enters an invalid choice, it displays an error message and prompts for a valid choice again.
         """
         self.clear_console()
-        print("----------------------------------------")
-        print("AVD CLAB Helper")
-        print("----------------------------------------")
+        print_header("AVD Helper", width=60)
         print("1. Deploy Single L3LS")
         print("2. Deploy Dual L3LS")
         print("3. Cleanup Lab")
@@ -2064,9 +2036,7 @@ class ClabHelper:
             self.execute_deployment("dual", "dual_l3ls")
         elif choice == "3":
             self.clear_console()
-            print("========================================")
-            print("Lab Cleanup Information")
-            print("========================================")
+            print_header("Lab Cleanup Progress", width=60)
             self.run_task_with_animation(self.destroy_clab, "Destroying AVD CLAB")
             self.run_task_with_animation(
                 self.cvp_decommission_devices, "Decommissioning Devices from CVP"
@@ -2083,9 +2053,7 @@ class ClabHelper:
             self.main()
         elif choice == "4":
             self.clear_console()
-            print("========================================")
-            print("Documentation Information")
-            print("========================================")
+            print_header("Documentation Information", width=60)
             self.run_task_with_animation(
                 self.setup_apache_container, "Starting Docker Container"
             )
