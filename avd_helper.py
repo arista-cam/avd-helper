@@ -528,42 +528,49 @@ class ClabHelper:
         print_header("Importing Docker Images", width=60)
         print("")
 
-        tar_file_paths = []
-        for file in os.listdir("./EOS"):
-            if file.startswith("cEOS-lab") and file.endswith(".tar"):
-                tar_file_paths.append(os.path.join("./EOS", file))
+        tar_file_paths = [
+            os.path.join("./EOS", file) 
+            for file in os.listdir("./EOS")
+            if file.startswith("cEOS-lab") and file.endswith(".tar")
+        ]
 
         if tar_file_paths:
-            for tar_file_path in tar_file_paths:
-                repository = "ceosimage"
-                filename = os.path.basename(tar_file_path)
-                tag = None
-                if filename.startswith("cEOS-lab") and filename.endswith(".tar"):
-                    tag = filename[len("cEOS-lab") + 1 : -4]
+            if len(tar_file_paths) > 1:
+                print("Multiple cEOS image files found. Please select the version you would like to use:")
+                for i, tar_file_path in enumerate(tar_file_paths, start=1):
+                    version = os.path.basename(tar_file_path).split('-')[-1].replace('.tar', '')
+                    print(f"{i}. {version}")
 
-                if repository and tag:
-                    docker_command = [
-                        "docker",
-                        "import",
-                        tar_file_path,
-                        f"{repository}:{tag}",
-                    ]
-                    result = subprocess.run(
-                        docker_command,
-                        stdout=subprocess.PIPE,
-                        stderr=subprocess.PIPE,
-                    )
-                    if result.returncode != 0:
-                        print("Error importing Docker image:", result.stderr.decode())
-                        print("*" * 60)
-                        print(
-                            "The cEOS image has failed to import, please use the manual 'docker import' command instead"
-                        )
-                        print("*" * 60)
-                        input("Press any key to exit")
-                        sys.exit(0)
-                else:
-                    print("Failed to import Docker image")
+                choice = input("Enter the number of the version you would like to import: ")
+                try:
+                    selected_file = tar_file_paths[int(choice) - 1]
+                except (IndexError, ValueError):
+                    print("Invalid selection. Returning to main menu.")
+                    self.main()
+                    return
+            else:
+                selected_file = tar_file_paths[0]
+
+            repository = "ceosimage"
+            filename = os.path.basename(selected_file)
+            tag = filename[len("cEOS-lab") + 1 : -4]
+
+            if repository and tag:
+                self.clear_console()
+                print_header("Importing Docker Image", width=60)
+                docker_command = [
+                    "docker",
+                    "import",
+                    selected_file,
+                    f"{repository}:{tag}",
+                ]
+                result = subprocess.run(
+                    docker_command,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                )
+                if result.returncode != 0:
+                    print("Error importing Docker image:", result.stderr.decode())
                     print("*" * 60)
                     print(
                         "The cEOS image has failed to import, please use the manual 'docker import' command instead"
@@ -571,6 +578,19 @@ class ClabHelper:
                     print("*" * 60)
                     input("Press any key to exit")
                     sys.exit(0)
+                else:
+                    print(f"Docker image '{repository}:{tag}' imported successfully.")
+                    time.sleep(2)
+                    return
+            else:
+                print("Failed to import Docker image")
+                print("*" * 60)
+                print(
+                    "The cEOS image has failed to import, please use the manual 'docker import' command instead"
+                )
+                print("*" * 60)
+                input("Press any key to exit")
+                sys.exit(0)
         else:
             print_header("Missing Docker cEOS Image", width=60)
             print("ERROR: There are no docker images with the 'ceosimage' tag")
@@ -1756,6 +1776,62 @@ class ClabHelper:
                 print(f"- <none>: {image.id}")
         input("Please press any key to return to the Main Menu")
         self.main()
+               
+    def replace_ceos_image(self):
+        self.clear_console()
+        print_header("Replace CEOS Image", width=60)
+        print("")
+        choice = input("Would you like to replace the current cEOS image? [y/n]: ")
+
+        if choice.lower() == 'y':
+            self.clear_console()
+            print_header("Replacing CEOS Image", width=60)
+            
+            result = subprocess.run(['docker', 'images', '--format', '{{.Repository}}:{{.Tag}}'], 
+                                    capture_output=True, text=True)
+            current_version = None
+            for line in result.stdout.splitlines():
+                if 'ceos' in line:
+                    current_version = line.split(':')[1]
+                    break
+
+            if current_version:
+                subprocess.run(['docker', 'rmi', f"ceosimage:{current_version}"], 
+                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+            ceos_files = [filename for filename in os.listdir("./EOS") if filename.endswith('.tar')]
+
+            if not ceos_files:
+                print("No Docker image found in the specified folder.")
+                time.sleep(2)
+                self.main()
+
+            elif len(ceos_files) == 1:
+                selected_file = ceos_files[0]
+            else:
+                print("Multiple cEOS image files found. Please select the version you would like to use:")
+                for i, filename in enumerate(ceos_files, start=1):
+                    version = filename.split('-')[-1].replace('.tar', '')
+                    print(f"{i}. {version}")
+
+                choice = input("Enter the number of the version you would like to use: ")
+                try:
+                    selected_file = ceos_files[int(choice) - 1]
+                except (IndexError, ValueError):
+                    print("Invalid selection. Returning to main menu.")
+                    time.sleep(2)
+                    self.main()
+
+            file_path = os.path.join("./EOS", selected_file)
+            new_version = selected_file.split('-')[-1].replace('.tar', '')
+            subprocess.run(['docker', 'import', file_path, f"ceosimage:{new_version}"], 
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            print(f"Successfully replaced cEOS image with version: {new_version}")
+            time.sleep(2)
+            self.main()
+        else:
+            self.main()
+            
 
     def factory_reset(self):
         """
@@ -1771,55 +1847,64 @@ class ClabHelper:
         prompts the user for confirmation, and then deletes the specified files and folders if the user confirms.
         If the user cancels the operation, the function returns to the main menu.
         """
-        self.clear_console()
-        print(68 * "*")
-        print(f"! WARNING: THIS WILL RESET THE SCRIPT BACK TO DEFAULT !")
-        print(68 * "*")
-        print(f"The following Files/Folders will be deleted:")
-        print(f"- {self.single_doc_dir}")
-        print(f"- {self.dual_doc_dir}")
-        print(f"- {self.single_intend_dir}")
-        print(f"- {self.dual_intend_dir}")
-        print(f"- {self.output_single_topology_file}")
-        print(f"- {self.output_dual_topology_file}")
-        print(f"- {self.log_folder}")
-        print(f"- {self.token_file}")
-        print(f"- {self.cvp_file}")
-        print(f"- {self.network_file}")
-        print(f"- {self.output_deploy_file}")
-        print(68 * "*")
-        print("")
-        delete = input(
-            "Please confirm that you would like to delete these files/folders? [y/n]: "
-        )
-        if delete == "y":
-            if self.single_doc_dir.exists():
-                shutil.rmtree(self.single_doc_dir)
-            if self.dual_doc_dir.exists():
-                shutil.rmtree(self.dual_doc_dir)
-            if self.single_intend_dir.exists():
-                shutil.rmtree(self.single_intend_dir)
-            if self.dual_intend_dir.exists():
-                shutil.rmtree(self.dual_intend_dir)
-            if self.log_folder.exists():
-                shutil.rmtree(self.log_folder)
-            if self.output_single_topology_file.exists():
-                self.output_single_topology_file.unlink()
-            if self.output_dual_topology_file.exists():
-                self.output_dual_topology_file.unlink()
-            if self.token_file.exists():
-                self.token_file.unlink()
-            if self.cvp_file.exists():
-                self.cvp_file.unlink()
-            if self.network_file.exists():
-                self.network_file.unlink()
-            if self.output_deploy_file.exists():
-                self.output_deploy_file.unlink()
+        self.get_running_labs()
+        if self.topology_file == "None":
             self.clear_console()
-            print_header("Factory Reset Complete", width=60)
-            input("Please press any key to Exit")
-            sys.exit(0)
+            print(68 * "*")
+            print(f"! WARNING: THIS WILL RESET THE SCRIPT BACK TO DEFAULT !")
+            print(68 * "*")
+            print(f"The following Files/Folders will be deleted:")
+            print(f"- {self.single_doc_dir}")
+            print(f"- {self.dual_doc_dir}")
+            print(f"- {self.single_intend_dir}")
+            print(f"- {self.dual_intend_dir}")
+            print(f"- {self.output_single_topology_file}")
+            print(f"- {self.output_dual_topology_file}")
+            print(f"- {self.log_folder}")
+            print(f"- {self.token_file}")
+            print(f"- {self.cvp_file}")
+            print(f"- {self.network_file}")
+            print(f"- {self.output_deploy_file}")
+            print(68 * "*")
+            print("")
+            delete = input(
+                "Please confirm that you would like to delete these files/folders? [y/n]: "
+            )
+            if delete == "y":
+                if self.single_doc_dir.exists():
+                    shutil.rmtree(self.single_doc_dir)
+                if self.dual_doc_dir.exists():
+                    shutil.rmtree(self.dual_doc_dir)
+                if self.single_intend_dir.exists():
+                    shutil.rmtree(self.single_intend_dir)
+                if self.dual_intend_dir.exists():
+                    shutil.rmtree(self.dual_intend_dir)
+                if self.log_folder.exists():
+                    shutil.rmtree(self.log_folder)
+                if self.output_single_topology_file.exists():
+                    self.output_single_topology_file.unlink()
+                if self.output_dual_topology_file.exists():
+                    self.output_dual_topology_file.unlink()
+                if self.token_file.exists():
+                    self.token_file.unlink()
+                if self.cvp_file.exists():
+                    self.cvp_file.unlink()
+                if self.network_file.exists():
+                    self.network_file.unlink()
+                if self.output_deploy_file.exists():
+                    self.output_deploy_file.unlink()
+                self.clear_console()
+                print_header("Factory Reset Complete", width=60)
+                input("Please press any key to Exit")
+                sys.exit(0)
+            else:
+                self.main()
         else:
+            print(68 * "*")
+            print(f"! WARNING: TOPOLOGY STILL RUNNING !")
+            print(68 * "*")
+            print(f"Please cleanup the topology before running the factory reset.")
+            input("Please press any key to return to the Main Menu")
             self.main()
 
     def show_logs_menu(self):
@@ -1862,6 +1947,9 @@ class ClabHelper:
         else:
             print("Invalid choice, please try again.")
             self.show_logs_menu()
+            
+
+
 
     def animated_message(self, stop_event, message="Processing", delay=0.5):
         """
@@ -1949,7 +2037,7 @@ class ClabHelper:
                 print_header("Insufficient RAM. Please allocate at least 16GB", width=60)
                 print("")
                 input("Press Enter to return to the Main Menu")
-                self.main_menu()
+                self.main()
         elif topology_type == "dual":
             self.inventory_file = self.dual_inv_file
             self.topology_file = self.output_dual_topology_file
@@ -1958,7 +2046,7 @@ class ClabHelper:
                 print_header("Insufficient RAM. Please allocate at least 32GB", width=60)
                 print("")
                 input("Press Enter to return to the Main Menu")
-                self.main_menu()
+                self.main()
     
         self.doc_dir = self.topology_dir / subdir / "documentation"
         self.intend_dir = self.topology_dir / subdir / "intended"
@@ -1980,6 +2068,24 @@ class ClabHelper:
         print("\nDeployment Complete!")
         input("Press Enter to return to the Main Menu")
         self.main()
+        
+    def topology_menu(self):
+        self.clear_console()
+        print_header("Lab Deployment Options", width=60) 
+        print("1. Single DC L3LS")
+        print("2. Dual DC L3LS")
+        print("3. Back\n")  
+        menu_choice = input("Enter your choice: ")
+        if menu_choice == "1":
+            self.execute_deployment("single", "single_l3ls")
+        elif menu_choice == "2":
+            self.execute_deployment("dual", "dual_l3ls")
+        elif menu_choice == "3":
+            self.main()
+        else:
+            print("Invalid choice, please try again.")
+            self.topology_menu()
+  
     def main_menu(self):
         """
         Displays the main menu for the AVD CLAB Helper.
@@ -1992,13 +2098,13 @@ class ClabHelper:
         """
         self.clear_console()
         print_header("AVD Helper", width=60)
-        print("1. Deploy Single L3LS")
-        print("2. Deploy Dual L3LS")
-        print("3. Cleanup Lab")
-        print("4. Open Topology Documentation")
-        print("5. Show Logs")
-        print("6. Show Docker Images")
-        print("7. Reset All Files (Including Tokens)")
+        print("1. Deploy a Lab")
+        print("2. Cleanup Lab")
+        print("3. Open Topology Documentation")
+        print("4. Show Logs")
+        print("5. Show Docker Images")
+        print("6. Reset All Files (Including Tokens)")
+        print("7. Replace CEOS Docker Image")
         print("8. Exit\n")
 
         while True:
@@ -2007,6 +2113,7 @@ class ClabHelper:
                 return menu_choice
             else:
                 print("Invalid choice. Please try again.")
+        
 
     @superuser_required
     def main(self):
@@ -2031,10 +2138,8 @@ class ClabHelper:
         self.get_ram_info()
         choice = self.main_menu()
         if choice == "1":
-            self.execute_deployment("single", "single_l3ls")
+            self.topology_menu()
         elif choice == "2":
-            self.execute_deployment("dual", "dual_l3ls")
-        elif choice == "3":
             self.clear_console()
             print_header("Lab Cleanup Progress", width=60)
             self.run_task_with_animation(self.destroy_clab, "Destroying AVD CLAB")
@@ -2051,19 +2156,21 @@ class ClabHelper:
             print("\nCleanup Complete!")
             input("Press Enter to return to the Main Menu")
             self.main()
-        elif choice == "4":
+        elif choice == "3":
             self.clear_console()
             print_header("Documentation Information", width=60)
             self.run_task_with_animation(
                 self.setup_apache_container, "Starting Docker Container"
             )
             self.documentation_info()
-        elif choice == "5":
+        elif choice == "4":
             self.show_logs_menu()
-        elif choice == "6":
+        elif choice == "5":
             self.list_docker_images()
-        elif choice == "7":
+        elif choice == "6":
             self.factory_reset()
+        elif choice == "7":
+            self.replace_ceos_image()
         elif choice == "8":
             self.clear_console()
             sys.exit(0)
