@@ -43,7 +43,8 @@ After CVP is up and running, add a static route using the `ip route add 172.16.1
 The default range used for this deployment is 172.16.100.0/24
 
 ### CloudVision Setup Diagram
-![CVP Config](https://user-images.githubusercontent.com/680877/222660607-a5fa8d7a-d500-43aa-9400-3a24ed21c60d.png)
+[![cvp_route_configuration](https://github.com/user-attachments/assets/ddb68966-bc01-4fa2-b3c3-e443622bc7d3)](https://github.com/user-attachments/assets/ddb68966-bc01-4fa2-b3c3-e443622bc7d3)
+
 
 ## User Guide
 For more infomation see the [Wiki](https://github.com/CameronPrior/avd-helper/wiki)
