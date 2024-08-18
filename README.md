@@ -8,12 +8,13 @@ The code you will find in this repository is most likely offensive to developers
 This 'code' is designed to use AVD to deploy a Spine/Leaf topology via CVP using ContainerLab devices.
 Features include:
 - Automatically install all dependencies (docker, containerlab, pip, avd, etc...)
-- Automatically deploy containerlab toplogys
+- Automatically deploy containerlab toplogies
 - Automatic provisioning into On-Prem CVP or CVaaS
 - Automatic creation of management configlets
 - Automatically runs both Build and Deploy playbooks
 - View Ansible output from Build and Deploy playbooks after they have run
 - Host AVD generated documentation with apache container
+- Client 'servers' attached to topology for testing (iPerf3/tcpdump/scapy)
 
 # Requirements
 In order for arista-avd-clab to work, it requires the following:
