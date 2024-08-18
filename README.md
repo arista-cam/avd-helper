@@ -39,8 +39,8 @@ I have utilised three external python modules in this script:
 # On-Prem CloudVision Setup
 In order to use CVP with ContainerLab, the CVP host needs a static route configured back to the management range you have configured.
 When configuring CVP, I used the same interface for both the Cluster Interface and the Device Interface.
-After CVP is up and running, add a static route using the `ip route add 172.16.100.0 via {DOCKER HOST IP} dev eth0` command.
-The default range used for this deployment is 172.16.100.0/24
+After CVP is up and running, add a static route using the `ip route add 172.16.1.0 via {DOCKER HOST IP} dev eth0` command.
+The default range used for this deployment is 172.16.1.0/24
 
 ### CloudVision Setup Diagram
 [![cvp_route_configuration](https://github.com/user-attachments/assets/ddb68966-bc01-4fa2-b3c3-e443622bc7d3)](https://github.com/user-attachments/assets/ddb68966-bc01-4fa2-b3c3-e443622bc7d3)
