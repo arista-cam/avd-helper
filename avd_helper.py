@@ -1778,6 +1778,15 @@ class ClabHelper:
         self.main()
                
     def replace_ceos_image(self):
+        """
+        Replaces the current cEOS Docker image with a new one from the ./EOS directory.
+
+        Parameters:
+        None
+
+        Returns:
+        None
+        """
         self.clear_console()
         print_header("Replace CEOS Image", width=60)
         print("")
@@ -2070,6 +2079,17 @@ class ClabHelper:
         self.main()
         
     def topology_menu(self):
+        """
+        Displays the menu for selecting and deploying different types of L3LS topologies.
+
+        Parameters:
+        self (ClabHelper): An instance of the ClabHelper class.
+
+        Returns:
+        None
+
+        The function clears the console, prints the menu options, and prompts the user to enter their choice.
+        """
         self.clear_console()
         print_header("Lab Deployment Options", width=60) 
         print("1. Single DC L3LS")
