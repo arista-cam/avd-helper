@@ -440,6 +440,14 @@ class ClabHelper:
 
         if result.returncode != 0:
             raise RuntimeError(f"Failed to inspect CLAB environments: {result.stderr}")
+    
+        if 'no containers found' in result.stderr:
+             self.topology_file = None
+             return
+         
+        if not result.stdout.strip():
+            self.topology_file = None
+            return
 
         running_labs = json.loads(result.stdout)
 
@@ -797,7 +805,7 @@ class ClabHelper:
                 name, url = instance_mapping[cvp_instance]
 
                 confirmation = (
-                    input(f"You selected {name}. Is this correct? (yes/no): ")
+                    input(f"You selected {name}. Is this correct? [y/n]: ")
                     .strip()
                     .lower()
                 )
@@ -1003,7 +1011,7 @@ class ClabHelper:
         print(f"NTP Server IP Address: {ntp_server}")
 
         confirmation = (
-            input("\nIs this information correct? (yes/no): ").strip().lower()
+            input("\nIs this information correct? [y/n]: ").strip().lower()
         )
         if confirmation in ["yes", "y"]:
             with open(self.network_file, "w") as file:
@@ -1857,7 +1865,7 @@ class ClabHelper:
         If the user cancels the operation, the function returns to the main menu.
         """
         self.get_running_labs()
-        if self.topology_file == "None":
+        if self.topology_file == None:
             self.clear_console()
             print(68 * "*")
             print(f"! WARNING: THIS WILL RESET THE SCRIPT BACK TO DEFAULT !")
@@ -1905,10 +1913,12 @@ class ClabHelper:
                 self.clear_console()
                 print_header("Factory Reset Complete", width=60)
                 input("Please press any key to Exit")
+                self.clear_console()
                 sys.exit(0)
             else:
                 self.main()
         else:
+            self.clear_console()
             print(68 * "*")
             print(f"! WARNING: TOPOLOGY STILL RUNNING !")
             print(68 * "*")
