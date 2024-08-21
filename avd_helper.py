@@ -210,9 +210,6 @@ ssl._create_default_https_context = ssl._create_unverified_context
 # Disable urllib3 warnings
 requests.packages.urllib3.disable_warnings()
 
-# Disable all console logging messages
-logging.disable(logging.CRITICAL)
-
 
 class ClabHelper:
     def __init__(self):
@@ -1557,7 +1554,6 @@ class ClabHelper:
         Returns:
         None
         """
-        self.get_running_labs()
         self.working_dir = self.script_dir
         self.subprocess_run(f"clab destroy -t {self.topology_file} --cleanup")
 
@@ -2171,21 +2167,28 @@ class ClabHelper:
             self.topology_menu()
         elif choice == "2":
             self.clear_console()
-            print_header("Lab Cleanup Progress", width=60)
-            self.run_task_with_animation(self.destroy_clab, "Destroying AVD CLAB")
-            self.run_task_with_animation(
-                self.cvp_decommission_devices, "Decommissioning Devices from CVP"
-            )
-            self.run_task_with_animation(
-                self.cvp_delete_configlets, "Deleting Configlets from CVP"
-            )
-            self.run_task_with_animation(
-                self.cleanup_docker, "Removing Apache Docker Container"
-            )
+            self.get_running_labs()
+            if self.topology_file == None:
+                self.clear_console()
+                print_header("No Labs Found", width=60)
+                input("Press Enter to return to the Main Menu")
+                self.main()
+            else:
+                print_header("Lab Cleanup Progress", width=60)
+                self.run_task_with_animation(self.destroy_clab, "Destroying AVD CLAB")
+                self.run_task_with_animation(
+                    self.cvp_decommission_devices, "Decommissioning Devices from CVP"
+                )
+                self.run_task_with_animation(
+                    self.cvp_delete_configlets, "Deleting Configlets from CVP"
+                )
+                self.run_task_with_animation(
+                    self.cleanup_docker, "Removing Apache Docker Container"
+                )
 
-            print("\nCleanup Complete!")
-            input("Press Enter to return to the Main Menu")
-            self.main()
+                print("\nCleanup Complete!")
+                input("Press Enter to return to the Main Menu")
+                self.main()
         elif choice == "3":
             self.clear_console()
             print_header("Documentation Information", width=60)
