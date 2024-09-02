@@ -270,6 +270,7 @@ class ClabHelper:
         self.stop_event = threading.Event()
         self.animation_threads = []
         self.host_ip = None
+        self.first_start = True
 
     @staticmethod
     def superuser_required(func):
@@ -1223,7 +1224,7 @@ class ClabHelper:
                 self.ssh_logger.error(f"Error during SSH session on device {ip}: {e}")
                 self.log_location = "SSH Log file"
                 self.error_message()
-        time.sleep(60)
+        time.sleep(120)
 
     def cvp_move_devices(self):
         """
@@ -1941,7 +1942,7 @@ class ClabHelper:
         print("5. Show Ansible Build Log")
         print("6. Show Ansible Deploy Log")
         print("8. Clear Logs")
-        print("9. Back\n")
+        print("0. Back\n")
         menu_choice = input("Enter your choice: ")
         if menu_choice == "1":
             self.show_logs(self.clab_log, "Container Lab")
@@ -1957,7 +1958,7 @@ class ClabHelper:
             self.show_logs(self.ansible_deploy_log, "Ansible Deploy")
         elif menu_choice == "8":
             self.clear_logs()
-        elif menu_choice == "9":
+        elif menu_choice == "0":
             self.main()
         else:
             print("Invalid choice, please try again.")
@@ -2100,18 +2101,114 @@ class ClabHelper:
         print_header("Lab Deployment Options", width=60) 
         print("1. Single DC L3LS")
         print("2. Dual DC L3LS")
-        print("3. Back\n")  
+        print("0. Back\n")  
         menu_choice = input("Enter your choice: ")
         if menu_choice == "1":
             self.execute_deployment("single", "single_l3ls")
         elif menu_choice == "2":
             self.execute_deployment("dual", "dual_l3ls")
-        elif menu_choice == "3":
+        elif menu_choice == "0":
             self.main()
         else:
             print("Invalid choice, please try again.")
             self.topology_menu()
-  
+    def console_menu(self):
+        self.get_running_labs()
+        if self.topology_file is None:
+            self.clear_console()
+            print_header("No Labs Found", width=60)
+            input("Press Enter to return to the Main Menu")
+            self.main()
+        else:
+            self.clear_console()
+            print_header("Device Console Access", width=60)
+
+            container_map = {}
+            if self.topology_type == "single_l3ls":
+                print("1. dc1-spine1")
+                print("2. dc1-spine2")
+                print("3. dc1-leaf1a")
+                print("4. dc1-leaf1b")
+                print("5. dc1-leaf2a")
+                print("6. dc1-leaf2b")
+                print("7. dc1-client1")
+                print("8. dc1-client2")
+                print("0. Exit\n")
+                menu_choice = input("Enter your choice:")
+
+                container_map = {
+                    "1": "clab-avd-dc1-spine1",
+                    "2": "clab-avd-dc1-spine2",
+                    "3": "clab-avd-dc1-leaf1a",
+                    "4": "clab-avd-dc1-leaf1b",
+                    "5": "clab-avd-dc1-leaf2a",
+                    "6": "clab-avd-dc1-leaf2b",
+                    "7": "clab-avd-dc1-client1",
+                    "8": "clab-avd-dc1-client2",
+                }
+
+            elif self.topology_type == "dual_l3ls":
+                print("---DC1 Devices---")
+                print("1. dc1-spine1")
+                print("2. dc1-spine2")
+                print("3. dc1-leaf1a")
+                print("4. dc1-leaf1b")
+                print("5. dc1-leaf2a")
+                print("6. dc1-leaf2b")
+                print("7. dc1-client1")
+                print("8. dc1-client2")
+                print("")
+                print("---DC2 Devices---")
+                print("10. dc2-spine1")
+                print("11. dc2-spine2")
+                print("12. dc2-leaf1a")
+                print("13. dc2-leaf1b")
+                print("14. dc2-leaf2a")
+                print("15. dc2-leaf2b")
+                print("16. dc2-client1")
+                print("17. dc2-client2")
+                print("0. Exit\n")
+                menu_choice = input("Enter your choice:")
+
+                container_map = {
+                    "1": "clab-avd-dc1-spine1",
+                    "2": "clab-avd-dc1-spine2",
+                    "3": "clab-avd-dc1-leaf1a",
+                    "4": "clab-avd-dc1-leaf1b",
+                    "5": "clab-avd-dc1-leaf2a",
+                    "6": "clab-avd-dc1-leaf2b",
+                    "7": "clab-avd-dc1-client1",
+                    "8": "clab-avd-dc1-client2",
+                    "10": "clab-avd-dc2-spine1",
+                    "11": "clab-avd-dc2-spine2",
+                    "12": "clab-avd-dc2-leaf1a",
+                    "13": "clab-avd-dc2-leaf1b",
+                    "14": "clab-avd-dc2-leaf2a",
+                    "15": "clab-avd-dc2-leaf2b",
+                    "16": "clab-avd-dc2-client1",
+                    "17": "clab-avd-dc2-client2",
+                }
+
+            if menu_choice in container_map:
+                try:
+                    self.clear_console()
+                    if menu_choice not in ["7", "8", "16", "17"]:
+                        subprocess.run(["docker", "exec", "-it", container_map[menu_choice], "Cli"], check=True)
+                    else:
+                        subprocess.run(["docker", "exec", "-it", container_map[menu_choice], "/bin/ash"], check=True)
+                except subprocess.CalledProcessError:
+                    pass
+                finally:
+                    self.console_menu()
+            elif menu_choice == "0":
+                self.main()
+            else:
+                print("Invalid choice. Please select a valid option.")
+                input("Press Enter to try again.")
+                self.console_menu()
+
+
+    
     def main_menu(self):
         """
         Displays the main menu for the AVD CLAB Helper.
@@ -2131,11 +2228,12 @@ class ClabHelper:
         print("5. Show Docker Images")
         print("6. Reset All Files (Including Tokens)")
         print("7. Replace CEOS Docker Image")
-        print("8. Exit\n")
+        print("8. Device Console Access")
+        print("0. Exit\n")
 
         while True:
             menu_choice = input("Enter your choice: ")
-            if menu_choice in ["1", "2", "3", "4", "5", "6", "7", "8"]:
+            if menu_choice in ["1", "2", "3", "4", "5", "6", "7", "8", "0"]:
                 return menu_choice
             else:
                 print("Invalid choice. Please try again.")
@@ -2155,13 +2253,16 @@ class ClabHelper:
         Returns:
         None
         """
-        self.check_ceosimage()
-        self.check_hostimage()
-        self.check_files()
-        self.read_cvp_credentials()
-        self.read_network_info()
-        self.cvp_generate_device_token()
-        self.get_ram_info()
+        if self.first_start == True:
+            self.check_ceosimage()
+            self.check_hostimage()
+            self.check_files()
+            self.read_cvp_credentials()
+            self.read_network_info()
+            self.cvp_generate_device_token()
+            self.get_ram_info()
+            self.first_start = False
+
         choice = self.main_menu()
         if choice == "1":
             self.topology_menu()
@@ -2185,7 +2286,6 @@ class ClabHelper:
                 self.run_task_with_animation(
                     self.cleanup_docker, "Removing Apache Docker Container"
                 )
-
                 print("\nCleanup Complete!")
                 input("Press Enter to return to the Main Menu")
                 self.main()
@@ -2205,6 +2305,8 @@ class ClabHelper:
         elif choice == "7":
             self.replace_ceos_image()
         elif choice == "8":
+            self.console_menu()
+        elif choice == "0":
             self.clear_console()
             sys.exit(0)
 
