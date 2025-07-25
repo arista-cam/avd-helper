@@ -221,6 +221,7 @@ class ClabHelper:
         self.topology_dir = self.script_dir / "topologies"
         self.cvp_file = self.script_dir / "cvp_info.txt"
         self.network_file = self.script_dir / "network_info.txt"
+        self.not_first_start_file = self.script_dir / "not_first_start"
         self.template_ceos_file = self.script_dir / "templates" / "ceos.tpl"
         self.output_single_ceos_file = self.topology_dir / "single_l3ls" / "ceos.cfg"
         self.output_dual_ceos_file = self.topology_dir / "dual_l3ls" / "ceos.cfg"
@@ -228,8 +229,8 @@ class ClabHelper:
         self.dual_inv_file = self.topology_dir / "dual_l3ls" / "inventory.yml" 
         self.inventory_file = None
         self.topology_file = None
-        self.template_deploy_file = self.script_dir / "templates" / "deploy.tpl"
-        self.output_deploy_file = self.script_dir / "playbooks" / "deploy.yml"
+        self.template_deploy_cvp_file = self.script_dir / "templates" / "deploy_cvp.tpl"
+        self.output_deploy_cvp_file = self.script_dir / "playbooks" / "deploy_cvp.yml"
         self.template_single_topology_file = self.script_dir / "templates" / "topology_single.tpl"
         self.output_single_topology_file = self.topology_dir / "single_l3ls" / "topology.yaml"
         self.template_dual_topology_file = self.script_dir / "templates" / "topology_dual.tpl"
@@ -240,6 +241,7 @@ class ClabHelper:
         self.dual_intend_dir = self.topology_dir / "dual_l3ls" / "intended"
         self.working_dir = None
         self.doc_dir = None
+        self.anta_dir = None
         self.intend_dir = None
         self.creds = {}
         self.tokens = {}
@@ -247,6 +249,7 @@ class ClabHelper:
         self.device_token = None
         self.cvp_ip = None
         self.api_server = None
+        self.cvp_required = None
         self.cvp_type = None
         self.is_cvaas = None
         self.dns_server = None
@@ -266,11 +269,15 @@ class ClabHelper:
         )
         self.ansible_build_log = self.log_folder / "ansible_build_output.log"
         self.ansible_deploy_log = self.log_folder / "ansible_deploy_output.log"
+        self.ansible_anta_log = self.log_folder / "anta_output.log"
         self.log_location = None
         self.stop_event = threading.Event()
         self.animation_threads = []
         self.host_ip = None
-        self.first_start = True
+        if self.not_first_start_file.exists():
+            self.first_start = False
+        else:
+            self.first_start = True
 
     @staticmethod
     def superuser_required(func):
@@ -455,11 +462,15 @@ class ClabHelper:
                 self.topology_file = self.topology_dir / "single_l3ls" / "topology.yaml" 
                 self.topology_type = "single_l3ls"
                 self.doc_dir = self.topology_dir / "single_l3ls" / "documentation"
+                self.anta_dir = self.topology_dir / "single_l3ls" / "reports"
+                self.inventory_file = self.single_inv_file
                 break
             elif lab_path == "topologies/dual_l3ls/topology.yaml":
                 self.topology_file = self.topology_dir / "dual_l3ls" / "topology.yaml" 
                 self.topology_type = "dual_l3ls"
                 self.doc_dir = self.topology_dir / "dual_l3ls" / "documentation"
+                self.anta_dir = self.topology_dir / "dual_l3ls" / "reports"
+                self.inventory_file = self.dual_inv_file
                 break
 
     def check_ceosimage(self):
@@ -640,8 +651,55 @@ class ClabHelper:
             alpine_host_dir = self.script_dir / "alpine_host"
             self.working_dir = alpine_host_dir
             self.subprocess_run("docker build -t alpine-host .")
-            
-               
+    
+    def first_start_check(self):
+        """
+        This function creates the not_first_start file after the program has been started for the first time
+
+        Parameters:
+        self (object): The object calling the function.
+
+        Returns:
+        None
+        """
+        self.not_first_start_file.touch()
+
+    
+
+    def check_cvp_required(self):
+        """
+        This function asks the user if they would like to use CVP or not.
+
+        Returns:
+        str: "yes" if CVP is required, "no" otherwise.
+        """
+        self.clear_console()
+        print_header("Will you be using CVP?", width=60)
+        print("1. Yes")
+        print("2. No\n")
+
+        while True:
+            cvp_required = input("Enter your choice (1 or 2): ").strip()
+            if cvp_required == "1":
+                required = "yes"
+                selection = "CloudVision Required"
+            elif cvp_required == "2":
+                required = "no"
+                selection = "CloudVision Not Required"
+            else:
+                logging.error("Invalid choice for CVP Requirement. Please try again.")
+                continue
+
+            confirmation = (
+                input(f"You selected {selection}. Is this correct? [y/n]: ")
+                .strip()
+                .lower()
+            )
+            if confirmation in ["yes", "y"]:
+                return required
+            else:
+                print()
+
     def check_files(self):
         """
         This function checks the existence of the token, network, and CVP configuration files.
@@ -653,39 +711,19 @@ class ClabHelper:
         Returns:
         None
         """
-        
-        files = {
-            "token": self.token_file,
-            "network": self.network_file,
-            "cvp": self.cvp_file,
-        }
 
-        if (
-            not files["token"].exists()
-            and not files["network"].exists()
-            and files["cvp"].exists()
-        ):
-            files["cvp"].unlink()
-        elif (
-            not files["token"].exists()
-            and not files["cvp"].exists()
-            and files["network"].exists()
-        ):
-            files["network"].unlink()
-        elif (
-            not files["token"].exists()
-            and files["cvp"].exists()
-            and files["network"].exists()
-        ):
-            files["token"].unlink()
+        # List of required files and their setup functions
+        required_files = [
+            ("network", self.network_file, self.get_network_info),
+        ]
+        if self.cvp_required == "yes":
+            required_files.insert(0, ("token", self.token_file, self.get_cvp_credentials))
+            required_files.append(("cvp", self.cvp_file, self.get_cvp_credentials))
 
-        if (
-            not files["token"].exists()
-            or not files["cvp"].exists()
-            or not files["network"].exists()
-        ):
-            self.get_cvp_credentials()
-            self.get_network_info()
+        # Check each file and call setup if missing
+        for name, path, setup_func in required_files:
+            if not path.exists() and setup_func:
+                setup_func()
 
     def read_cvp_credentials(self):
         """
@@ -979,6 +1017,7 @@ class ClabHelper:
         }
         self.dns_server = self.creds.get("dns_server", None)
         self.ntp_server = self.creds.get("ntp_server", None)
+        self.cvp_required = self.creds.get("cvp_required", None)
 
     def get_network_info(self):
         """
@@ -1014,7 +1053,8 @@ class ClabHelper:
         if confirmation in ["yes", "y"]:
             with open(self.network_file, "w") as file:
                 file.write(f"dns_server={dns_server}\n")
-                file.write(f"ntp_server={ntp_server}")
+                file.write(f"ntp_server={ntp_server}\n")
+                file.write(f"cvp_required={self.cvp_required}\n")
         else:
             print()
             self.get_network_info()
@@ -1068,17 +1108,17 @@ class ClabHelper:
             getattr(self, f"output_{suffix}_ceos_file"),
             common_replacements
         )
-
-        cvp_certs = "True" if self.cvp_type == "cvaas" else "False"
-        process_template(
-            self.template_deploy_file,
-            self.output_deploy_file,
-            {
-                "{{cvp_ip}}": self.cvp_ip,
-                "{{cvp_token}}": self.cvp_token,
-                "{{cvp_certs}}": cvp_certs,
-            }
-        )
+        if self.cvp_required == "yes":
+            cvp_certs = "True" if self.cvp_type == "cvaas" else "False"
+            process_template(
+                self.template_deploy_cvp_file,
+                self.output_deploy_cvp_file,
+                {
+                    "{{cvp_ip}}": self.cvp_ip,
+                    "{{cvp_token}}": self.cvp_token,
+                    "{{cvp_certs}}": cvp_certs,
+                }
+            )
 
         process_template(
             getattr(self, f"template_{suffix}_topology_file"),
@@ -1393,9 +1433,9 @@ class ClabHelper:
             self.log_location = self.ansible_build_log
             self.error_message("An unexpected error occurred during the Ansible Build")
 
-    def ansible_deploy(self):
+    def ansible_deploy_cvp(self):
         """
-        This function runs the Ansible Deploy playbook.
+        This function runs the Ansible Deploy CVP playbook.
 
         Parameters:
         None
@@ -1407,7 +1447,43 @@ class ClabHelper:
         subprocess.CalledProcessError: If the Ansible Deploy playbook fails.
         Exception: If an unexpected error occurs during the Ansible Deploy.
         """
-        playbook = self.script_dir / "playbooks/deploy.yml"
+        playbook = self.script_dir / "playbooks/deploy_cvp.yml"
+
+        try:
+            with open(self.ansible_deploy_log, "w") as log_file:
+                subprocess.run(
+                    ["ansible-playbook", playbook, "-i", self.inventory_file],
+                    cwd=self.script_dir,
+                    stdout=log_file,
+                    stderr=log_file,
+                    check=True,
+                )
+        except subprocess.CalledProcessError as e:
+            self.ansible_error_logger.error(
+                f"Error running Ansible Deploy playbook: {e}"
+            )
+            self.log_location = self.ansible_deploy_log
+            self.error_message("Ansible Deploy Playbook failed")
+        except Exception as e:
+            self.ansible_error_logger.error(f"Unexpected error: {e}")
+            self.log_location = self.ansible_deploy_log
+            self.error_message("An unexpected error occurred during the Ansible Deploy")
+        
+    def ansible_deploy_eapi(self):
+        """
+        This function runs the Ansible Deploy EAPI playbook.
+
+        Parameters:
+        None
+
+        Returns:
+        None
+
+        Raises:
+        subprocess.CalledProcessError: If the Ansible Deploy playbook fails.
+        Exception: If an unexpected error occurs during the Ansible Deploy.
+        """
+        playbook = self.script_dir / "playbooks/deploy_eapi.yml"
 
         try:
             with open(self.ansible_deploy_log, "w") as log_file:
@@ -1482,7 +1558,7 @@ class ClabHelper:
         """
         self.get_running_labs()
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        s.connect((self.cvp_ip, 80))
+        s.connect(('8.8.8.8', 80))
         self.host_ip = s.getsockname()[0]
         s.close()
 
@@ -1504,9 +1580,13 @@ class ClabHelper:
                 name="avd_apache_server",
                 volumes={
                     os.path.abspath(self.doc_dir): {
-                        "bind": "/srv",
+                        "bind": "/srv/doco",
                         "mode": "rw",
                     },
+                    os.path.abspath(self.anta_dir): {
+                        "bind": "/srv/reports",
+                        "mode": "rw",
+                    }
                 },
                 ports={"8080/tcp": 8080},
                 detach=True,
@@ -1539,6 +1619,42 @@ class ClabHelper:
         input("Press Enter to Remove the docker container and return to the main menu.")
         self.subprocess_run("docker rm -f avd_apache_server")
         self.main()
+    
+    def run_anta(self):
+        """
+        Runs the ANTA tests for the AVD CLAB environment.
+
+        It then runs the ANTA tests using the ANTA playbook
+
+        Parameters:
+        None
+
+        Returns:
+        None
+        """
+        playbook = self.script_dir / "playbooks/anta.yml"
+        
+
+        try:
+            with open(self.ansible_anta_log, "w") as log_file:
+                subprocess.run(
+                    ["ansible-playbook", playbook, "-i", self.inventory_file],
+                    cwd=self.script_dir,
+                    stdout=log_file,
+                    stderr=log_file,
+                    check=True,
+                )
+        except subprocess.CalledProcessError as e:
+            self.ansible_error_logger.error(
+                f"Error running Ansible ANTA playbook: {e}"
+            )
+            self.log_location = self.ansible_anta_log
+            self.error_message("Ansible ANTA Playbook failed")
+        except Exception as e:
+            self.ansible_error_logger.error(f"Unexpected error: {e}")
+            self.log_location = self.ansible_anta_log
+            self.error_message("An unexpected error occurred during the Ansible ANTA tests")
+
 
     def destroy_clab(self):
         """
@@ -1696,6 +1812,36 @@ class ClabHelper:
             container.remove()
 
         time.sleep(3)
+    
+    def cleanup_anta(self):
+        """
+        Cleans up the ANTA files and directories.
+
+        This function removes the ANTA files and directories created during the execution of testing.
+        It checks if the specified directories exist and removes them if they do.
+
+        Parameters:
+        None
+
+        Returns:
+        None
+        """
+        single_l3ls_reports_dir = self.script_dir / "topologies" / "single_lsl3" / "reports"
+        single_l3ls_catalogs_dir = self.script_dir / "topologies" / "single_lsl3" / "custom_anta_catalogs"
+        dual_l3ls_reports_dir = self.script_dir / "topologies" / "dual_lsl3" / "reports"
+        dual_l3ls_catalogs_dir = self.script_dir / "topologies" / "dual_lsl3" / "custom_anta_catalogs"
+
+
+        if single_l3ls_reports_dir.exists():
+            shutil.rmtree(single_l3ls_reports_dir)
+        if single_l3ls_catalogs_dir.exists():
+            shutil.rmtree(single_l3ls_catalogs_dir)
+
+        if dual_l3ls_reports_dir.exists():
+            shutil.rmtree(dual_l3ls_reports_dir)
+        if dual_l3ls_catalogs_dir.exists():
+            shutil.rmtree(dual_l3ls_catalogs_dir)
+
 
     def show_logs(self, log_file, log_name):
         """
@@ -1878,7 +2024,8 @@ class ClabHelper:
             print(f"- {self.token_file}")
             print(f"- {self.cvp_file}")
             print(f"- {self.network_file}")
-            print(f"- {self.output_deploy_file}")
+            print(f"- {self.output_deploy_cvp_file}")
+            print(f"- {self.not_first_start_file}")
             print(68 * "*")
             print("")
             delete = input(
@@ -1905,8 +2052,10 @@ class ClabHelper:
                     self.cvp_file.unlink()
                 if self.network_file.exists():
                     self.network_file.unlink()
-                if self.output_deploy_file.exists():
-                    self.output_deploy_file.unlink()
+                if self.output_deploy_cvp_file.exists():
+                    self.output_deploy_cvp_file.unlink()
+                if self.not_first_start_file.exists():
+                    self.not_first_start_file.unlink()
                 self.clear_console()
                 print_header("Factory Reset Complete", width=60)
                 input("Please press any key to Exit")
@@ -1941,6 +2090,7 @@ class ClabHelper:
         print("4. Show Ansible Error Log")
         print("5. Show Ansible Build Log")
         print("6. Show Ansible Deploy Log")
+        print("7. Show ANTA Log")
         print("8. Clear Logs")
         print("0. Back\n")
         menu_choice = input("Enter your choice: ")
@@ -1956,6 +2106,8 @@ class ClabHelper:
             self.show_logs(self.ansible_build_log, "Ansible Build")
         elif menu_choice == "6":
             self.show_logs(self.ansible_deploy_log, "Ansible Deploy")
+        elif menu_choice == "7":
+            self.show_logs(self.ansible_anta_log, "ANTA Log")
         elif menu_choice == "8":
             self.clear_logs()
         elif menu_choice == "0":
@@ -2068,17 +2220,22 @@ class ClabHelper:
         self.intend_dir = self.topology_dir / subdir / "intended"
     
         self.clear_console()
+
         self.create_inventory()
-    
+        
         print_header("Lab Deployment Progress", width=60)
     
         self.run_task_with_animation(self.deploy_clab, "Deploying AVD CLAB")
         self.create_commands()
-        self.run_task_with_animation(self.cvp_register_devices, "Registering Devices with CVP"),
-        self.run_task_with_animation(self.cvp_move_devices, "Moving Device Containers"),
-        self.run_task_with_animation(self.cvp_create_configlets, "Creating Configlets"),
+        if self.cvp_required == "yes":
+            self.run_task_with_animation(self.cvp_register_devices, "Registering Devices with CVP"),
+            self.run_task_with_animation(self.cvp_move_devices, "Moving Device Containers"),
+            self.run_task_with_animation(self.cvp_create_configlets, "Creating Configlets"),
         self.run_task_with_animation(self.ansible_build, f"Building {topology_type.capitalize()} L3LS Configurations"),
-        self.run_task_with_animation(self.ansible_deploy, f"Deploying {topology_type.capitalize()} L3LS"),
+        if self.cvp_required == "yes":
+            self.run_task_with_animation(self.ansible_deploy_cvp, f"Deploying {topology_type.capitalize()} L3LS"),
+        else:
+            self.run_task_with_animation(self.ansible_deploy_eapi, f"Deploying {topology_type.capitalize()} L3LS"),
         self.run_task_with_animation(self.configure_hosts, "Configuring Hosts")
     
         print("\nDeployment Complete!")
@@ -2224,16 +2381,16 @@ class ClabHelper:
         print("1. Deploy a Lab")
         print("2. Cleanup Lab")
         print("3. Open Topology Documentation")
-        print("4. Show Logs")
-        print("5. Show Docker Images")
-        print("6. Reset All Files (Including Tokens)")
-        print("7. Replace CEOS Docker Image")
-        print("8. Device Console Access")
+        print("4. Run ANTA Tests")
+        print("5. Show Logs")
+        print("6. Show Docker Images")
+        print("7. Reset All Files (Including Tokens)")
+        print("8. Replace CEOS Docker Image")
+        print("9. Device Console Access")
         print("0. Exit\n")
-
         while True:
             menu_choice = input("Enter your choice: ")
-            if menu_choice in ["1", "2", "3", "4", "5", "6", "7", "8", "0"]:
+            if menu_choice in ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"]:
                 return menu_choice
             else:
                 print("Invalid choice. Please try again.")
@@ -2253,14 +2410,26 @@ class ClabHelper:
         Returns:
         None
         """
-        if self.first_start == True:
-            self.check_ceosimage()
-            self.check_hostimage()
-            self.check_files()
-            self.read_cvp_credentials()
+        self.check_ceosimage()
+        self.check_hostimage()
+        self.get_ram_info()
+        try:
             self.read_network_info()
-            self.cvp_generate_device_token()
-            self.get_ram_info()
+            self.check_files()
+        except FileNotFoundError:
+            pass
+        if self.first_start == True:
+            self.first_start_check()
+            self.cvp_required = self.check_cvp_required()
+            self.check_files()
+            if self.cvp_required == "yes":
+                self.read_cvp_credentials()
+                try:
+                    self.cvp_generate_device_token()
+                except Exception as e:
+                    print(f"Warning: Could not connect to CVP to generate device token: {e}")
+                    print("You can retry device registration from the main menu.")
+            self.read_network_info()
             self.first_start = False
 
         choice = self.main_menu()
@@ -2277,15 +2446,23 @@ class ClabHelper:
             else:
                 print_header("Lab Cleanup Progress", width=60)
                 self.run_task_with_animation(self.destroy_clab, "Destroying AVD CLAB")
-                self.run_task_with_animation(
-                    self.cvp_decommission_devices, "Decommissioning Devices from CVP"
-                )
-                self.run_task_with_animation(
-                    self.cvp_delete_configlets, "Deleting Configlets from CVP"
-                )
+                if self.cvp_required == "yes":
+                    self.run_task_with_animation(
+                        self.cvp_decommission_devices, "Decommissioning Devices from CVP"
+                    )
+                    self.run_task_with_animation(
+                        self.cvp_delete_configlets, "Deleting Configlets from CVP"
+                    )
+                    self.run_task_with_animation(
+                        self.cvp_decommission_devices, "Decommissioning Devices from CVP"
+                    )
+                    self.run_task_with_animation(
+                        self.cvp_delete_configlets, "Deleting Configlets from CVP"
+                    )
                 self.run_task_with_animation(
                     self.cleanup_docker, "Removing Apache Docker Container"
                 )
+                self.run_task_with_animation(self.cleanup_anta, "Cleaning up ANTA files")
                 print("\nCleanup Complete!")
                 input("Press Enter to return to the Main Menu")
                 self.main()
@@ -2297,14 +2474,29 @@ class ClabHelper:
             )
             self.documentation_info()
         elif choice == "4":
-            self.show_logs_menu()
+            self.get_running_labs()
+            if self.topology_file == None:
+                self.clear_console()
+                print_header("No Labs Found", width=60)
+                input("Press Enter to return to the Main Menu")
+                self.main()
+            else:
+                self.clear_console()
+                print_header("ANTA Test Suite", width=60)
+                self.run_task_with_animation(self.run_anta, "Running ANTA Tests")
+                print("\nANTA Testing Complete!")
+                print("You can view the ANTA reports using the Documentation Option")
+                input("Press Enter to return to the Main Menu")
+                self.main()
         elif choice == "5":
-            self.list_docker_images()
+            self.show_logs_menu()
         elif choice == "6":
-            self.factory_reset()
+            self.list_docker_images()
         elif choice == "7":
-            self.replace_ceos_image()
+            self.factory_reset()
         elif choice == "8":
+            self.replace_ceos_image()
+        elif choice == "9":
             self.console_menu()
         elif choice == "0":
             self.clear_console()

@@ -1,5 +1,6 @@
 hostname {{ .ShortName }}
 username arista privilege 15 secret arista
+username ansible privilege 15 secret ansible
 !
 service routing protocols model multi-agent
 !

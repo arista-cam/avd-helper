@@ -1,0 +1,11 @@
+---
+# deploy_eapi.yml
+
+- name: Build and Deploy Configs
+  hosts: FABRIC
+  gather_facts: false
+  tasks:
+
+    - name: Deploy Configurations to Devices
+      ansible.builtin.import_role:
+        name: arista.avd.eos_config_deploy_eapi
