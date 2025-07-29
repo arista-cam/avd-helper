@@ -2416,6 +2416,7 @@ class ClabHelper:
         try:
             self.read_network_info()
             self.check_files()
+            self.read_cvp_credentials()
         except FileNotFoundError:
             pass
         if self.first_start == True:
